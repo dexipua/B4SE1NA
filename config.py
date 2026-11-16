@@ -36,3 +36,6 @@ INDICATORS: list[Indicator] = [
 ]
 
 INDICATOR_CODES: list[str] = [ind.code for ind in INDICATORS]
+CATEGORY_OF: dict[str, str] = {ind.code: ind.category for ind in INDICATORS}
+LOWER_IS_BETTER: list[str] = [ind.code for ind in INDICATORS if ind.lower_is_better]
+LOG_SCALED: list[str] = ["NY.GDP.PCAP.PP.CD"]
