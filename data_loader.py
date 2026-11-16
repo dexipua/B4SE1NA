@@ -1,103 +1,58 @@
-'''
-"""Download World Bank indicators and cache them in data/dataset.csv."""
-
-from pathlib import Path
-
 import pandas as pd
-import wbgapi as wb
+import requests
+import csv
+import time
 
 from config import INDICATOR_CODES, INDICATORS, Indicator
 
-DATA_DIR = Path(__file__).parent / "data"
-DATASET_PATH = DATA_DIR / "dataset.csv"
-MOCK_PATH = DATA_DIR / "mock_dataset.csv"
+BASE_URL = "https://data360api.worldbank.org/data360/data"
 WGI_DB = 3
 
 
-def api_code(ind: Indicator) -> str:
-    """Series id as the API expects it (WGI series carry a GOV_WGI_ prefix)."""
-    return f"GOV_WGI_{ind.code}" if ind.db == WGI_DB else ind.code
+def api_code(indicator: Indicator) -> str:
+    """Translate config indicator codes into Data360 INDICATOR IDs."""
+    if indicator.db == WGI_DB:
+        return indicator.code if indicator.code.startswith("GOV_WGI_") else f"GOV_WGI_{indicator.code}"
+    normalized = indicator.code.replace(".", "_")
+    return normalized if normalized.startswith("WB_WDI_") else f"WB_WDI_{normalized}"
 
-
-def fetch_indicators() -> pd.DataFrame:
-    """Most recent non-empty value of every indicator per economy (iso3 x code)."""
-    to_code = {api_code(ind): ind.code for ind in INDICATORS}
-    rows = [
-        row
-        for db in sorted({ind.db for ind in INDICATORS})
-        for row in wb.data.fetch(
-            [api_code(ind) for ind in INDICATORS if ind.db == db],
-            economy="all", mrnev=1, db=db, skipAggs=True,
-        )
-    ]
-    long = pd.DataFrame(rows).assign(series=lambda d: d["series"].map(to_code))
-    return long.pivot(index="economy", columns="series", values="value").reindex(columns=INDICATOR_CODES)
-
-
-def fetch_countries() -> pd.DataFrame:
-    """Country name and region name for every non-aggregate economy, indexed by iso3."""
-    region_names = {r["code"]: r["name"] for r in wb.region.list()}
-    eco = wb.economy.DataFrame(skipAggs=True)
-    return pd.DataFrame({
-        "country": eco["name"].str.strip(),
-        "region": eco["region"].map(region_names).str.strip(),
-    }).rename_axis("iso3")
-
-
-def load_dataset(refresh: bool = False) -> pd.DataFrame:
-    """Return the cached dataset; download it first when `refresh` is set.
-
-    Without a cache the bundled mock dataset is returned, so the app runs offline.
-    """
-    if refresh:
-        fetch_countries().join(fetch_indicators(), how="inner").to_csv(DATASET_PATH)
-    path = DATASET_PATH if DATASET_PATH.exists() else MOCK_PATH
-    return pd.read_csv(path, index_col="iso3", keep_default_na=False, na_values=[""])
-'''
-
-
-from config import Indicator, INDICATORS, INDICATOR_CODES
-import pandas as pd
-import requests
-
-BASE_URL = "https://data360api.worldbank.org/data360/data"
 
 def fetch_countries_metadata() -> pd.DataFrame:
     url = "https://api.worldbank.org/v2/countries"
-    params={
-        "format" : "json",
-        "per_page" : 500
-    }
-    resp = requests.get(url, params=params, timeout=30)
+    resp = requests.get(url, params={"format": "json", "per_page": 500}, timeout=30)
+    resp.raise_for_status()
     payload = resp.json()[1]
-    
-    rows = []
-    
-    for item in payload:
-        if item["region"]["id"] == 'NA': continue
-        rows.append({
-            "iso3" : item["id"],
-            "country" : item["name"],
-            "region" : item["region"]["value"]
-        })
-    df = pd.DataFrame(rows)
-    if df.empty: return None
-    df.set_index("iso3")
-    return df
-        
 
-# TODO: ENABLE FETCH OF GOV_WGI_PV and GOV_WGI_CC
-def fetch_indicator(indicator : Indicator, meta : pd.DataFrame, year_from = 2015, year_to = 2025):
+    rows = [
+        {
+            "iso3": item["id"],
+            "country": item["name"].strip(),
+            "region": item["region"]["value"].strip(),
+        }
+        for item in payload
+        if item["region"]["id"] != "NA"
+    ]
+    if not rows:
+        return pd.DataFrame(columns=["country", "region"]).rename_axis("iso3")
+    return pd.DataFrame(rows).set_index("iso3")
+
+
+def fetch_indicator(
+    indicator: Indicator,
+    iso3_codes: list[str],
+    year_from: int = 2015,
+    year_to: int = 2025,
+) -> pd.DataFrame:
     rows = []
     skip = 0
     params = {
-        "DATABASE_ID" : ("WB_WDI" if indicator.db == 2 else "WB_WGI"),
-        "INDICATOR" : indicator.code,
-        "REF_AREA" : ",".join(meta["iso3"]),
-        "timePeriodFrom" : str(year_from),
-        "timePeriodTo" : str(year_to)
+        "DATABASE_ID": "WB_WGI" if indicator.db == WGI_DB else "WB_WDI",
+        "INDICATOR": api_code(indicator),
+        "REF_AREA": ",".join(iso3_codes),
+        "timePeriodFrom": str(year_from),
+        "timePeriodTo": str(year_to),
     }
-    
+
     while True:
         resp = requests.get(BASE_URL, params={**params, "skip": skip}, timeout=30)
         resp.raise_for_status()
@@ -107,40 +62,61 @@ def fetch_indicator(indicator : Indicator, meta : pd.DataFrame, year_from = 2015
         if len(rows) >= payload.get("count", 0) or not batch:
             break
         skip += 1000
+        time.sleep(0.2)
 
     df = pd.DataFrame(rows)
     if df.empty:
-        return df
-    
+        return pd.DataFrame(columns=["REF_AREA", "INDICATOR", "OBS_VALUE"])
+
     for group in ["SEX", "AGE", "URBANISATION", "COMP_BREAKDOWN_1"]:
-        if group in df.columns:
-            df = df[df[group].isin(["_T", "_Z"])]
-            
+        if group in df.columns and df[group].notna().any():
+            totals = df[df[group].isin(["_T", "_Z"])]
+            if not totals.empty:
+                df = totals
+
     df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
     df = (
         df.dropna(subset=["OBS_VALUE"])
         .sort_values("TIME_PERIOD")
         .drop_duplicates(subset=["REF_AREA"], keep="last")
+        .assign(INDICATOR=indicator.code)  # Map back to config code for pivot/reindex
     )
     return df[["REF_AREA", "INDICATOR", "OBS_VALUE"]]
 
-def load_data(update : bool = False):
-    if not update:
-        return None
+def update_data():
+    meta = fetch_countries_metadata()
+    if meta.empty:
+        return pd.DataFrame(columns=["country", "region", *INDICATOR_CODES]).rename_axis("iso3")
+    
+    iso3_codes = meta.index.tolist()
+    raw_data = pd.concat(
+        [fetch_indicator(indicator, iso3_codes) for indicator in INDICATORS],
+        ignore_index=True,
+    )
+
+    if raw_data.empty:
+        indicators_df = pd.DataFrame(index=meta.index, columns=INDICATOR_CODES)
     else:
-        meta = fetch_countries_metadata()
-        if meta is None or meta.empty:
-            return pd.DataFrame(columns=["iso3", "country", "region", *INDICATOR_CODES])
-        
-        raw_data = pd.concat(
-            [fetch_indicator(indicator, meta) for indicator in INDICATORS],
-            ignore_index=True,
+        indicators_df = (
+            raw_data.pivot(index="REF_AREA", columns="INDICATOR", values="OBS_VALUE")
+            .reindex(columns=INDICATOR_CODES)
         )
-        formatted_data = raw_data.pivot(index="REF_AREA", columns="INDICATOR", 
-                                        values="OBS_VALUE").reindex(columns=INDICATOR_CODES)
-        return formatted_data
     
+    data = meta.join(indicators_df, how="inner")
     
+    if not data.empty:
+        data.to_csv("data/test_dataset.csv") # TODO: change path to data/dataset.csv
+    return data
+
+def load_from_csv():
+    return pd.read_csv("data/test_dataset.csv") # TODO: change path to data/dataset.csv
+
+def load_data(update: bool = False) -> pd.DataFrame | None:
+    if not update:
+        return load_from_csv()
+    else:
+        return update_data()
+
 if __name__ == "__main__":
     data = load_data(True)
     print(data)
