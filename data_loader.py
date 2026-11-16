@@ -1,97 +1,146 @@
-"""Download World Bank indicators and cache them in data/dataset.csv.
+'''
+"""Download World Bank indicators and cache them in data/dataset.csv."""
 
-Columns: country, region, one value column per indicator, then the year of each value.
-"""
-
-from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
-import requests
+import wbgapi as wb
 
-from config import INDICATOR_CODES, INDICATORS, YEAR_COLUMNS, Indicator
+from config import INDICATOR_CODES, INDICATORS, Indicator
 
 DATA_DIR = Path(__file__).parent / "data"
 DATASET_PATH = DATA_DIR / "dataset.csv"
 MOCK_PATH = DATA_DIR / "mock_dataset.csv"
-API_URL = "https://api.worldbank.org/v2/en"
-PAGE_SIZE = 1000
-TIMEOUT = 60
 WGI_DB = 3
-AGGREGATE_REGION = "NA"  # region id the API gives to World, income groups, Euro area...
 
 
 def api_code(ind: Indicator) -> str:
-    """V2 API series id for a Data360-style id.
-
-    WB_WDI_SP_DYN_LE00_IN -> SP.DYN.LE00.IN, WB_WGI_PV_EST -> GOV_WGI_PV.EST.
-    """
-    dotted = ind.code.split("_", 2)[2].replace("_", ".")
-    return f"GOV_WGI_{dotted}" if ind.db == WGI_DB else dotted
+    """Series id as the API expects it (WGI series carry a GOV_WGI_ prefix)."""
+    return f"GOV_WGI_{ind.code}" if ind.db == WGI_DB else ind.code
 
 
-def get_json(session: requests.Session, path: str, **params: object) -> object:
-    """GET one API page as parsed JSON; HTTP errors raise requests exceptions."""
-    resp = session.get(f"{API_URL}/{path}", params={"format": "json", **params}, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def fetch_countries_metadata(session: requests.Session) -> pd.DataFrame:
-    """Country name and region for every non-aggregate economy, indexed by iso3."""
-    _, rows = get_json(session, "country", per_page=PAGE_SIZE)
-    return pd.DataFrame(
-        {"iso3": r["id"], "country": r["name"].strip(), "region": r["region"]["value"].strip()}
-        for r in rows if r["region"]["id"] != AGGREGATE_REGION
-    ).set_index("iso3")
-
-
-def fetch_series(session: requests.Session, db: int, series: list[str]) -> Iterator[dict]:
-    """Yield {country, series, time, value} for the most recent non-empty year, page by page."""
-    path = f"sources/{db}/series/{';'.join(series)}/country/all/time/all"
-    page, pages = 1, 1
-    while page <= pages:
-        body = get_json(session, path, mrnev=1, per_page=PAGE_SIZE, page=page)
-        if not isinstance(body, dict) or "source" not in body:
-            raise requests.HTTPError(f"Unexpected World Bank API response: {body}")
-        pages = -(-int(body["total"]) // int(body["per_page"]))
-        for row in body["source"]["data"]:
-            yield {v["concept"].lower(): v["id"] for v in row["variable"]} | {"value": row["value"]}
-        page += 1
-
-
-def fetch_indicators(session: requests.Session) -> pd.DataFrame:
-    """Latest value of every indicator per economy, followed by the year of each value."""
+def fetch_indicators() -> pd.DataFrame:
+    """Most recent non-empty value of every indicator per economy (iso3 x code)."""
     to_code = {api_code(ind): ind.code for ind in INDICATORS}
     rows = [
         row
         for db in sorted({ind.db for ind in INDICATORS})
-        for row in fetch_series(session, db, [api_code(ind) for ind in INDICATORS if ind.db == db])
+        for row in wb.data.fetch(
+            [api_code(ind) for ind in INDICATORS if ind.db == db],
+            economy="all", mrnev=1, db=db, skipAggs=True,
+        )
     ]
-    long = pd.DataFrame(rows).dropna(subset=["value"]).assign(
-        series=lambda d: d["series"].map(to_code),
-        year=lambda d: d["time"].str.removeprefix("YR").astype(int),
-    )
-    wide = long.pivot(index="country", columns="series", values=["value", "year"])
-    values = wide["value"].reindex(columns=INDICATOR_CODES).astype(float)
-    years = wide["year"].reindex(columns=INDICATOR_CODES).rename(columns=YEAR_COLUMNS).astype("Int64")
-    return values.join(years)
+    long = pd.DataFrame(rows).assign(series=lambda d: d["series"].map(to_code))
+    return long.pivot(index="economy", columns="series", values="value").reindex(columns=INDICATOR_CODES)
 
 
-def download_dataset() -> pd.DataFrame:
-    """Countries joined with their indicators; aggregates are dropped by the join."""
-    with requests.Session() as session:
-        return fetch_countries_metadata(session).join(fetch_indicators(session), how="inner")
+def fetch_countries() -> pd.DataFrame:
+    """Country name and region name for every non-aggregate economy, indexed by iso3."""
+    region_names = {r["code"]: r["name"] for r in wb.region.list()}
+    eco = wb.economy.DataFrame(skipAggs=True)
+    return pd.DataFrame({
+        "country": eco["name"].str.strip(),
+        "region": eco["region"].map(region_names).str.strip(),
+    }).rename_axis("iso3")
 
 
 def load_dataset(refresh: bool = False) -> pd.DataFrame:
     """Return the cached dataset; download it first when `refresh` is set.
 
     Without a cache the bundled mock dataset is returned, so the app runs offline.
-    Year columns are optional (older caches lack them) and load as nullable integers.
     """
     if refresh:
-        download_dataset().to_csv(DATASET_PATH, index_label="iso3")
+        fetch_countries().join(fetch_indicators(), how="inner").to_csv(DATASET_PATH)
     path = DATASET_PATH if DATASET_PATH.exists() else MOCK_PATH
-    df = pd.read_csv(path, index_col="iso3", keep_default_na=False, na_values=[""])
-    return df.astype({col: "Int64" for col in YEAR_COLUMNS.values() if col in df})
+    return pd.read_csv(path, index_col="iso3", keep_default_na=False, na_values=[""])
+'''
+
+
+from config import Indicator, INDICATORS, INDICATOR_CODES
+import pandas as pd
+import requests
+
+BASE_URL = "https://data360api.worldbank.org/data360/data"
+
+def fetch_countries_metadata() -> pd.DataFrame:
+    url = "https://api.worldbank.org/v2/countries"
+    params={
+        "format" : "json",
+        "per_page" : 500
+    }
+    resp = requests.get(url, params=params, timeout=30)
+    payload = resp.json()[1]
+    
+    rows = []
+    
+    for item in payload:
+        if item["region"]["id"] == 'NA': continue
+        rows.append({
+            "iso3" : item["id"],
+            "country" : item["name"],
+            "region" : item["region"]["value"]
+        })
+    df = pd.DataFrame(rows)
+    if df.empty: return None
+    df.set_index("iso3")
+    return df
+        
+
+# TODO: ENABLE FETCH OF GOV_WGI_PV and GOV_WGI_CC
+def fetch_indicator(indicator : Indicator, meta : pd.DataFrame, year_from = 2015, year_to = 2025):
+    rows = []
+    skip = 0
+    params = {
+        "DATABASE_ID" : ("WB_WDI" if indicator.db == 2 else "WB_WGI"),
+        "INDICATOR" : indicator.code,
+        "REF_AREA" : ",".join(meta["iso3"]),
+        "timePeriodFrom" : str(year_from),
+        "timePeriodTo" : str(year_to)
+    }
+    
+    while True:
+        resp = requests.get(BASE_URL, params={**params, "skip": skip}, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+        batch = payload.get("value", [])
+        rows.extend(batch)
+        if len(rows) >= payload.get("count", 0) or not batch:
+            break
+        skip += 1000
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    
+    for group in ["SEX", "AGE", "URBANISATION", "COMP_BREAKDOWN_1"]:
+        if group in df.columns:
+            df = df[df[group].isin(["_T", "_Z"])]
+            
+    df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    df = (
+        df.dropna(subset=["OBS_VALUE"])
+        .sort_values("TIME_PERIOD")
+        .drop_duplicates(subset=["REF_AREA"], keep="last")
+    )
+    return df[["REF_AREA", "INDICATOR", "OBS_VALUE"]]
+
+def load_data(update : bool = False):
+    if not update:
+        return None
+    else:
+        meta = fetch_countries_metadata()
+        if meta is None or meta.empty:
+            return pd.DataFrame(columns=["iso3", "country", "region", *INDICATOR_CODES])
+        
+        raw_data = pd.concat(
+            [fetch_indicator(indicator, meta) for indicator in INDICATORS],
+            ignore_index=True,
+        )
+        formatted_data = raw_data.pivot(index="REF_AREA", columns="INDICATOR", 
+                                        values="OBS_VALUE").reindex(columns=INDICATOR_CODES)
+        return formatted_data
+    
+    
+if __name__ == "__main__":
+    data = load_data(True)
+    print(data)
