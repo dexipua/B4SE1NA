@@ -77,6 +77,13 @@ python .ngrok/start.py
 | `i18n.py`, `locales/*.json` | усі тексти: один JSON-файл на мову |
 | `app.py` | лише інтерфейс Streamlit |
 
+## Граф проєкту
+
+`graphify-out/graph.html` — інтерактивна карта коду й документації (функції, модулі, зв'язки,
+групи). Відкрийте файл у браузері, сервер не потрібен. Короткий звіт — `graphify-out/GRAPH_REPORT.md`.
+У git зберігаються лише ці файли та `graph.json`; кеші graphify лишаються локально.
+Оновити граф після змін у коді: `graphify update .` (потрібен `uv tool install graphifyy`).
+
 ## Тести
 
 ```bash
