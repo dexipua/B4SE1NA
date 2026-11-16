@@ -6,6 +6,7 @@ import pytest
 from streamlit.runtime.context import ContextProxy
 from streamlit.testing.v1 import AppTest
 
+from config import CATEGORIES
 from i18n import DEFAULT_LANG, t
 from presets import PRESETS
 from quiz import QUESTIONS
@@ -91,24 +92,45 @@ def test_refresh_only_for_local_visits(monkeypatch: pytest.MonkeyPatch, host: st
     assert any(b.label == refresh for b in at.sidebar.button) == visible
 
 
-def test_quiz_sets_weights_from_answers(app: AppTest) -> None:
-    """The quiz dialog enables 'apply' once answered, then fills the sidebar and closes."""
-    def open_quiz() -> None:
-        next(b for b in app.sidebar.button if b.label == t("quiz.open", DEFAULT_LANG)).click().run()
+def open_quiz(app: AppTest) -> None:
+    """Open the quiz dialog (AppTest reruns the whole script, so it is reopened after every click)."""
+    next(b for b in app.sidebar.button if b.label == t("quiz.open", DEFAULT_LANG)).click().run()
 
-    def apply_button():
-        return next(b for b in app.button if b.label == t("quiz.apply", DEFAULT_LANG))
 
-    open_quiz()
-    assert apply_button().disabled
-    chosen = {"stage": "family", "work": "none", "safety": "top", "health": "care"}
-    for question, options in QUESTIONS.items():
-        app.radio(key=f"quiz_{question}").set_value(chosen.get(question, next(iter(options))))
-    open_quiz()
-    apply_button().click().run()
+def test_quiz_cards_answer_skip_back_and_apply(app: AppTest) -> None:
+    """One card per question with a progress bar; skips are allowed; the result applies the weights."""
+    chosen = {"weekend": "family", "night": "calm", "doctor": "clinic"}  # everything else is skipped
+    for step, question in enumerate(QUESTIONS):
+        open_quiz(app)
+        assert app.get("progress")[0].value == int(100 * step / len(QUESTIONS))  # AppTest reports percent
+        assert app.button(key="quiz_back").disabled == (step == 0)
+        target = f"quiz_{question}_{chosen[question]}" if question in chosen else "quiz_skip"
+        app.button(key=target).click().run()
+        assert not app.exception
+
+    open_quiz(app)
+    app.button(key="quiz_back").click().run()  # back to the last card: its skip is remembered, no answer lit
+    open_quiz(app)
+    assert all(b.proto.type != "primary" for b in app.button if (b.key or "").startswith("quiz_dream_"))
+    app.button(key="quiz_skip").click().run()
+
+    open_quiz(app)
+    app.button(key="quiz_apply").click().run()
     assert not app.exception
     assert app.sidebar.slider(key="safety").value == 10
-    assert app.success and not any((r.key or "").startswith("quiz_") for r in app.radio)
+    assert app.success
+
+
+def test_quiz_with_everything_skipped_gives_equal_weights(app: AppTest) -> None:
+    """Skipping every card is allowed and yields equal weights, not an error."""
+    for _ in QUESTIONS:
+        open_quiz(app)
+        app.button(key="quiz_skip").click().run()
+    open_quiz(app)
+    assert app.info  # "you skipped every question" note on the result card
+    app.button(key="quiz_apply").click().run()
+    assert not app.exception
+    assert {app.sidebar.slider(key=cat).value for cat in CATEGORIES} == {10}
 
 
 def test_explore_tab_switches_axes(app: AppTest) -> None:

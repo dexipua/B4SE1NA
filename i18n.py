@@ -186,25 +186,42 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
     ),
     # Preference quiz: UI
     "quiz.open": (
-        "Не знаєте, що обрати? Пройдіть тест", "Not sure? Take the quiz", "Unsicher? Machen Sie den Test",
-        "Indécis ? Faites le quiz", "拿不定主意？做个测试",
+        "Не знаєте, що обрати? Міні-тест на 1 хвилину", "Not sure? Take the 1-minute quiz",
+        "Unsicher? Machen Sie den 1-Minuten-Test", "Indécis ? Faites le quiz d'une minute", "拿不定主意？做个1分钟小测试",
     ),
-    "quiz.title": ("Тест уподобань", "Preference quiz", "Präferenztest", "Quiz de préférences", "偏好测试"),
+    "quiz.title": ("Міні-тест", "Quick quiz", "Kurztest", "Mini-quiz", "快速测试"),
     "quiz.intro": (
-        "{n} коротких запитань — за відповідями ми розрахуємо ваги критеріїв. Потім їх можна змінити "
-        "на бічній панелі.",
-        "{n} short questions: your answers set the weight of every criterion. You can still adjust them in "
-        "the sidebar afterwards.",
-        "{n} kurze Fragen: Ihre Antworten bestimmen das Gewicht jedes Kriteriums. Danach können Sie es in "
-        "der Seitenleiste anpassen.",
-        "{n} questions courtes : vos réponses fixent le poids de chaque critère. Vous pourrez ensuite les "
-        "ajuster dans le panneau latéral.",
-        "{n}个简短问题：您的回答将决定每项标准的权重。之后仍可在侧边栏中调整。",
+        "{n} буденних ситуацій. Обирайте, що ближче, а якщо не знаєте — просто пропускайте.",
+        "{n} everyday situations. Pick what feels closest, or simply skip if you're not sure.",
+        "{n} Alltagssituationen. Wählen Sie, was am besten passt, oder überspringen Sie einfach.",
+        "{n} situations du quotidien. Choisissez ce qui vous ressemble, ou passez si vous hésitez.",
+        "{n}个日常情境。选最接近您的答案，拿不准就直接跳过。",
     ),
-    "quiz.apply": (
-        "Розрахувати мої ваги", "Calculate my weights", "Meine Gewichte berechnen", "Calculer mes poids",
-        "计算我的权重",
+    "quiz.progress": (
+        "Питання {i} з {n}", "Question {i} of {n}", "Frage {i} von {n}", "Question {i} sur {n}", "第{i}题，共{n}题",
     ),
+    "quiz.skip": ("Пропустити", "Skip", "Überspringen", "Passer", "跳过"),
+    "quiz.back": ("Назад", "Back", "Zurück", "Retour", "上一步"),
+    "quiz.restart": ("Почати знову", "Start over", "Neu starten", "Recommencer", "重新开始"),
+    "quiz.result_title": (
+        "🎉 Ваш профіль готовий", "🎉 Your profile is ready", "🎉 Ihr Profil ist fertig", "🎉 Votre profil est prêt",
+        "🎉 您的偏好已生成",
+    ),
+    "quiz.result_answered": (
+        "Відповідей: {answered} з {n}. Пропущені питання на результат не впливають.",
+        "Answered {answered} of {n}. Skipped questions don't affect the result.",
+        "{answered} von {n} beantwortet. Übersprungene Fragen beeinflussen das Ergebnis nicht.",
+        "{answered} réponses sur {n}. Les questions passées n'influencent pas le résultat.",
+        "已回答{answered}/{n}题。跳过的问题不影响结果。",
+    ),
+    "quiz.all_skipped": (
+        "Ви пропустили всі питання, тож усі критерії отримають однакову вагу.",
+        "You skipped every question, so all criteria get equal weight.",
+        "Sie haben alle Fragen übersprungen, daher werden alle Kriterien gleich gewichtet.",
+        "Vous avez passé toutes les questions : tous les critères auront le même poids.",
+        "您跳过了所有问题，所有标准将获得相同权重。",
+    ),
+    "quiz.apply": ("Показати мої країни", "Show my countries", "Meine Länder anzeigen", "Voir mes pays", "查看我的国家"),
     "quiz.done": (
         "Ваги розраховано за тестом. Найважливіше для вас: {cats}.",
         "Weights calculated from the quiz. What matters most to you: {cats}.",
@@ -212,143 +229,121 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "Poids calculés d'après le quiz. Ce qui compte le plus pour vous : {cats}.",
         "已根据测试计算权重。您最看重的是：{cats}。",
     ),
-    # Preference quiz: questions (keyed by quiz.QUESTIONS ids) and their options
-    "quiz.stage": ("Хто переїжджає?", "Who is moving?", "Wer zieht um?", "Qui déménage ?", "谁要搬迁？"),
-    "quiz.stage.solo": ("Я сам(а)", "Just me", "Nur ich", "Moi seul(e)", "只有我自己"),
-    "quiz.stage.couple": (
-        "Пара без дітей", "A couple without children", "Ein Paar ohne Kinder", "Un couple sans enfants",
-        "没有孩子的伴侣",
+    # Preference quiz: scenarios (keyed by quiz.QUESTIONS ids) and their options
+    "quiz.weekend": (
+        "Вільна субота. Як ви її проведете?", "A free Saturday. How do you spend it?",
+        "Ein freier Samstag. Wie verbringen Sie ihn?", "Un samedi libre. Comment le passez-vous ?",
+        "空闲的周六，您会怎么过？",
     ),
-    "quiz.stage.family": (
-        "Сім'я з дітьми", "A family with children", "Eine Familie mit Kindern", "Une famille avec enfants",
-        "有孩子的家庭",
+    "quiz.weekend.nature": (
+        "Похід у ліс або в гори", "Hiking in the woods or mountains", "Wandern im Wald oder in den Bergen",
+        "Randonnée en forêt ou en montagne", "去森林或山里徒步",
     ),
-    "quiz.stage.retired": ("Пенсіонер(ка)", "A retiree", "Im Ruhestand", "Un(e) retraité(e)", "退休人士"),
-    "quiz.work": (
-        "Як ви плануєте заробляти?", "How will you earn a living?",
-        "Wie werden Sie Ihren Lebensunterhalt verdienen?", "Comment allez-vous gagner votre vie ?",
-        "您打算如何谋生？",
+    "quiz.weekend.city": (
+        "Кав'ярні та нові місця в місті", "Cafés and new spots in town", "Cafés und neue Orte in der Stadt",
+        "Cafés et nouveaux lieux en ville", "逛城里的咖啡馆和新去处",
     ),
-    "quiz.work.job_local": (
-        "Шукатиму роботу на місці", "Find a job locally", "Vor Ort eine Stelle finden",
-        "Trouver un emploi sur place", "在当地找工作",
+    "quiz.weekend.family": (
+        "Спокійний день у парку з рідними", "A calm day in the park with family",
+        "Ein ruhiger Tag im Park mit der Familie", "Une journée tranquille au parc en famille", "和家人在公园度过平静的一天",
     ),
-    "quiz.work.remote": (
-        "Працюватиму віддалено", "Work remotely", "Remote arbeiten", "Travailler à distance", "远程工作",
+    "quiz.night": (
+        "23:00, ви йдете додому пішки. Що відчуваєте?", "11 pm, you're walking home. How do you feel?",
+        "23 Uhr, Sie gehen zu Fuß nach Hause. Wie fühlen Sie sich?", "23 h, vous rentrez à pied. Que ressentez-vous ?",
+        "晚上11点，您步行回家。感觉如何？",
     ),
-    "quiz.work.business": (
-        "Відкрию власну справу", "Start my own business", "Ein eigenes Unternehmen gründen",
-        "Créer ma propre entreprise", "自己创业",
+    "quiz.night.calm": (
+        "Хочу почуватися абсолютно спокійно", "I want to feel completely at ease", "Ich will mich völlig sicher fühlen",
+        "Je veux me sentir parfaitement serein(e)", "我希望完全安心",
     ),
-    "quiz.work.none": (
-        "Не планую працювати", "I don't plan to work", "Ich plane nicht zu arbeiten",
-        "Je ne compte pas travailler", "不打算工作",
+    "quiz.night.alert": (
+        "Трохи пильності — це нормально", "A little caution is fine", "Ein bisschen Vorsicht ist okay",
+        "Un peu de vigilance, ça va", "稍加小心就好",
     ),
-    "quiz.money": (
-        "Що для вас найважливіше у фінансах?", "What matters most to you about money?",
-        "Was ist Ihnen beim Geld am wichtigsten?", "Qu'est-ce qui compte le plus pour vous côté argent ?",
-        "在经济方面，您最看重什么？",
+    "quiz.night.fearless": (
+        "Я про таке навіть не думаю", "I don't even think about it", "Darüber denke ich gar nicht nach",
+        "Je n'y pense même pas", "我根本不考虑这些",
     ),
-    "quiz.money.salary": ("Високі доходи", "High incomes", "Hohe Einkommen", "Des revenus élevés", "高收入"),
-    "quiz.money.prices": ("Стабільні ціни", "Stable prices", "Stabile Preise", "Des prix stables", "物价稳定"),
-    "quiz.money.affordable": (
-        "Доступне життя, не обов'язково найбагатша країна",
-        "Affordable living, not necessarily the richest country",
-        "Bezahlbares Leben, nicht unbedingt das reichste Land",
-        "Une vie abordable, pas forcément le pays le plus riche", "生活成本可承受，不一定是最富裕的国家",
+    "quiz.wallet": (
+        "Перший місяць на новому місці. Що порадує найбільше?",
+        "Your first month in a new place. What would make you happiest?",
+        "Ihr erster Monat am neuen Ort. Was würde Sie am meisten freuen?",
+        "Votre premier mois dans un nouvel endroit. Qu'est-ce qui vous ferait le plus plaisir ?",
+        "在新地方的第一个月，什么最让您开心？",
     ),
-    "quiz.money.indifferent": (
-        "Гроші — не головне", "Money isn't the main thing", "Geld ist nicht das Wichtigste",
-        "L'argent n'est pas l'essentiel", "钱不是最重要的",
+    "quiz.wallet.salary": ("Солідна зарплата", "A solid paycheck", "Ein ordentliches Gehalt", "Un bon salaire", "可观的薪水"),
+    "quiz.wallet.job": (
+        "Знайти роботу за тиждень", "Landing a job within a week", "In einer Woche einen Job finden",
+        "Trouver un emploi en une semaine", "一周内找到工作",
     ),
-    "quiz.safety": (
-        "Наскільки важлива для вас безпека?", "How important is safety to you?",
-        "Wie wichtig ist Ihnen Sicherheit?", "Quelle importance accordez-vous à la sécurité ?",
-        "安全对您有多重要？",
+    "quiz.wallet.cheap": (
+        "Ціни, що приємно дивують", "Prices that pleasantly surprise me", "Preise, die angenehm überraschen",
+        "Des prix qui surprennent agréablement", "物价让人惊喜",
     ),
-    "quiz.safety.top": (
-        "Це головне", "It's my top priority", "Das hat oberste Priorität", "C'est ma priorité absolue",
-        "这是我的首要考虑",
+    "quiz.doctor": (
+        "Ви застудилися. Що для вас головне?", "You've caught a cold. What matters most?",
+        "Sie sind erkältet. Was ist Ihnen am wichtigsten?", "Vous avez attrapé un rhume. Qu'est-ce qui compte le plus ?",
+        "您感冒了，什么最重要？",
     ),
-    "quiz.safety.important": (
-        "Важлива, але не понад усе", "Important, but not above everything", "Wichtig, aber nicht über allem",
-        "Importante, mais pas avant tout", "重要，但不是压倒一切",
+    "quiz.doctor.clinic": (
+        "Хороший лікар уже завтра", "A good doctor by tomorrow", "Schon morgen ein guter Arzt",
+        "Un bon médecin dès demain", "明天就能看上好医生",
     ),
-    "quiz.safety.relaxed": (
-        "Не дуже хвилює", "Not much of a concern", "Kein großes Thema", "Pas vraiment une préoccupation",
-        "不太在意",
+    "quiz.doctor.prevention": (
+        "Я рідко хворію — дбаю про здоров'я наперед", "I rarely get sick: prevention first",
+        "Ich werde selten krank: Vorsorge zuerst", "Je tombe rarement malade : la prévention d'abord", "我很少生病，重在预防",
     ),
-    "quiz.health": (
-        "Що вам потрібно від охорони здоров'я?", "What do you need from healthcare?",
-        "Was brauchen Sie vom Gesundheitssystem?", "Qu'attendez-vous du système de santé ?",
-        "您对医疗有什么需求？",
+    "quiz.doctor.tea": (
+        "Чай з лимоном — і все минеться", "Tea with lemon and it'll pass", "Tee mit Zitrone, dann geht's vorbei",
+        "Un thé au citron et ça passera", "喝杯柠檬茶就好了",
     ),
-    "quiz.health.care": (
-        "Якісне лікування: хронічні хвороби або особливі потреби",
-        "Good medical care: chronic conditions or special needs",
-        "Gute medizinische Versorgung: chronische Erkrankungen oder besondere Bedürfnisse",
-        "Des soins de qualité : maladie chronique ou besoins particuliers", "优质医疗：有慢性病或特殊需要",
+    "quiz.paperwork": (
+        "Треба оформити документи в держустанові. Чого хочеться?",
+        "You need paperwork from a government office. What do you hope for?",
+        "Sie brauchen Unterlagen vom Amt. Was wünschen Sie sich?",
+        "Vous avez une démarche administrative. Qu'espérez-vous ?", "您需要去政府部门办手续，您希望怎样？",
     ),
-    "quiz.health.longevity": (
-        "Довге здорове життя", "A long, healthy life", "Ein langes, gesundes Leben",
-        "Une vie longue et en bonne santé", "健康长寿",
+    "quiz.paperwork.honest": (
+        "Чесно, за правилами, без «подяк»", "Honest, by the rules, no 'gifts'", "Ehrlich, nach Regeln, ohne „Geschenke“",
+        "Honnête, dans les règles, sans « cadeaux »", "按规矩办事，不用“打点”",
     ),
-    "quiz.health.fine": (
-        "Я здоровий(а), це не пріоритет", "I'm healthy, it's not a priority",
-        "Ich bin gesund, das hat keine Priorität", "Je suis en bonne santé, ce n'est pas une priorité",
-        "我身体健康，这不是优先事项",
+    "quiz.paperwork.stable": (
+        "Щоб правила не змінювались щороку", "Rules that don't change every year",
+        "Regeln, die sich nicht jedes Jahr ändern", "Des règles qui ne changent pas chaque année", "规则不要年年变",
     ),
-    "quiz.climate": (
-        "Клімат і природа: наскільки важливе чисте повітря?", "Climate and nature: how important is clean air?",
-        "Klima und Natur: Wie wichtig ist saubere Luft?", "Climat et nature : quelle importance pour un air pur ?",
-        "气候与自然：清洁空气对您有多重要？",
-    ),
-    "quiz.climate.clean_air": ("Дуже важливе", "Essential", "Unverzichtbar", "Essentiel", "非常重要"),
-    "quiz.climate.nice": ("Було б добре", "Nice to have", "Wäre schön", "Appréciable", "有更好"),
-    "quiz.climate.indifferent": ("Не звертаю уваги", "I don't mind", "Ist mir egal", "Peu m'importe", "无所谓"),
-    "quiz.values": (
-        "Що вам найближче?", "Which value is closest to you?", "Welcher Wert liegt Ihnen am nächsten?",
-        "Quelle valeur vous correspond le mieux ?", "哪种价值观最贴近您？",
-    ),
-    "quiz.values.honesty": (
-        "Чесні інституції без корупції", "Honest institutions without corruption",
-        "Ehrliche Institutionen ohne Korruption", "Des institutions honnêtes, sans corruption", "廉洁、没有腐败的制度",
-    ),
-    "quiz.values.stability": (
-        "Політична стабільність і передбачуваність", "Political stability and predictability",
-        "Politische Stabilität und Berechenbarkeit", "Stabilité politique et prévisibilité", "政治稳定、可预期",
-    ),
-    "quiz.values.opportunity": (
-        "Можливості для розвитку і кар'єри", "Opportunities to grow and build a career",
-        "Chancen für Entwicklung und Karriere", "Des opportunités pour évoluer et faire carrière",
-        "成长与职业发展的机会",
-    ),
-    "quiz.values.wellbeing": (
-        "Спокійне життя, здоров'я і природа", "A calm life, health and nature",
-        "Ein ruhiges Leben, Gesundheit und Natur", "Une vie calme, la santé et la nature", "平静的生活、健康与自然",
+    "quiz.paperwork.whatever": (
+        "Якось розберуся", "I'll figure it out", "Ich komme schon zurecht", "Je me débrouillerai", "总能搞定",
     ),
     "quiz.online": (
-        "Наскільки вам потрібен інтернет?", "How much do you rely on the internet?",
-        "Wie sehr sind Sie auf das Internet angewiesen?", "À quel point dépendez-vous d'internet ?",
-        "您对互联网的依赖程度如何？",
+        "Без чого не обійдеться ваш день?", "What can't your day do without?", "Worauf kann Ihr Tag nicht verzichten?",
+        "De quoi votre journée ne peut-elle pas se passer ?", "您的一天离不开什么？",
     ),
-    "quiz.online.always": ("Постійно онлайн", "Always online", "Ständig online", "Toujours en ligne", "一直在线"),
-    "quiz.online.sometimes": ("Час від часу", "From time to time", "Ab und zu", "De temps en temps", "偶尔"),
-    "quiz.online.rarely": ("Майже не користуюся", "Hardly ever", "Kaum", "Presque jamais", "几乎不用"),
-    "quiz.ambition": (
-        "Яку країну шукаєте?", "What kind of country are you looking for?", "Was für ein Land suchen Sie?",
-        "Quel type de pays recherchez-vous ?", "您在寻找什么样的国家？",
+    "quiz.online.wifi": (
+        "Швидкий інтернет — я працюю онлайн", "Fast internet: I work online", "Schnelles Internet: Ich arbeite online",
+        "Un internet rapide : je travaille en ligne", "高速网络，我在线工作",
     ),
-    "quiz.ambition.best": (
-        "Найкращу з можливих", "The best possible", "Das bestmögliche", "Le meilleur possible", "尽可能最好的",
+    "quiz.online.calls": (
+        "Відеодзвінки з рідними час від часу", "Video calls with family now and then",
+        "Ab und zu Videoanrufe mit der Familie", "Des appels vidéo avec la famille de temps en temps", "偶尔和家人视频通话",
     ),
-    "quiz.ambition.balanced": (
-        "Добру, без крайнощів", "A good one, nothing extreme", "Ein gutes, ohne Extreme",
-        "Un bon pays, sans excès", "不错就行，不求极致",
+    "quiz.online.offline": (
+        "Книжка і жодних сповіщень", "A book and no notifications", "Ein Buch und keine Benachrichtigungen",
+        "Un livre et aucune notification", "一本书，没有任何通知",
     ),
-    "quiz.ambition.modest": (
-        "Скромнішу, але доступнішу", "A more modest but more accessible one",
-        "Ein bescheideneres, aber zugänglicheres", "Plus modeste mais plus accessible", "条件一般但更容易实现的",
+    "quiz.dream": (
+        "Країна мрії — це…", "Your dream country is…", "Ihr Traumland ist…", "Votre pays de rêve, c'est…",
+        "您理想中的国家是……",
+    ),
+    "quiz.dream.best": (
+        "Найкраща в усіх рейтингах", "Top of every ranking", "Spitze in jedem Ranking",
+        "En tête de tous les classements", "各项排名都名列前茅",
+    ),
+    "quiz.dream.balanced": (
+        "Добра, але без крайнощів", "Good, nothing extreme", "Gut, ohne Extreme", "Bien, sans excès", "不错就行，不求极致",
+    ),
+    "quiz.dream.reachable": (
+        "Скромніша, зате реальна для переїзду", "More modest, but within reach", "Bescheidener, aber erreichbar",
+        "Plus modeste, mais accessible", "条件一般，但更容易实现",
     ),
     # Categories
     "cat.safety": ("Безпека", "Safety", "Sicherheit", "Sécurité", "安全"),

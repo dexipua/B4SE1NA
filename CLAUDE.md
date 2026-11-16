@@ -37,6 +37,11 @@ Ranking = smallest weighted Euclidean distance to the ideal. One function powers
   preset_settings(id); query(settings) -> (ideal, weights) for best/ideal modes;
   encode(settings) / decode(params, countries, regions) for shareable links (st.query_params);
   decode drops anything invalid
+- quiz.py: quick preference quiz. QUESTIONS = {id: Question(icon, {option_id: Option(icon, points, mults,
+  ideal)})}; quiz_settings(answers) -> settings like a preset. answers: {question: option | None}; a
+  skipped (None) or missing question is left out, so it is neutral; all skipped = equal weights.
+  UI: st.dialog with one card per question (progress bar, Back/Skip), then a result card;
+  state in st.session_state quiz_step / quiz_answers
 - i18n.py: all display text. LANGUAGES, TEXTS {key: (uk, en, de, fr, zh)}; t(key, lang, **fmt);
   label(prefix, id, lang) for cat./ind./preset./region. keys; country_names(fallback, lang) via CLDR
   (babel + pycountry); format_number(value, lang) for locale-aware numbers. tests/test_i18n.py fails on any missing translation or Cyrillic leak.

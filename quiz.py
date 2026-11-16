@@ -1,9 +1,11 @@
-"""Preference quiz for undecided users: lifestyle, career, climate and values -> personal settings.
+"""Quick preference quiz: light everyday scenarios -> personal settings.
 
 Each answer adds points to category weights, multiplies indicator weights inside a category,
 and may lower the desired level of a category (modest = more accessible countries).
-Points are scaled so the most important category gets weight 10. Display text lives in
-i18n.TEXTS under "quiz.<question>" and "quiz.<question>.<option>".
+Every category starts at BASE_POINTS and the result is scaled so the top category gets
+MAX_WEIGHT. A skipped question (missing or None answer) is simply left out: it adds nothing
+anywhere, so it is neutral, and skipping everything yields equal weights.
+Display text lives in i18n.TEXTS under "quiz.<question>" and "quiz.<question>.<option>".
 """
 
 from collections.abc import Mapping
@@ -22,11 +24,19 @@ MULT_LIMITS = (0.0, 2.0)  # same range as the fine-tuning sliders
 
 
 class Option(NamedTuple):
-    """Effect of one answer."""
+    """One answer: its emoji and its effect on the settings."""
 
+    icon: str
     points: Mapping[str, int] = {}  # category -> points added to its weight
     mults: Mapping[str, float] = {}  # indicator -> factor on its weight within the category
     ideal: Mapping[str, float] = {}  # category -> desired level (the lowest across answers wins)
+
+
+class Question(NamedTuple):
+    """A scenario with its emoji and answer options."""
+
+    icon: str
+    options: dict[str, Option]
 
 
 def everywhere(level: float) -> dict[str, float]:
@@ -34,57 +44,53 @@ def everywhere(level: float) -> dict[str, float]:
     return dict.fromkeys(CATEGORIES, level)
 
 
-QUESTIONS: dict[str, dict[str, Option]] = {
-    "stage": {
-        "solo": Option({"economy": 2, "digital": 2}),
-        "couple": Option({"economy": 2, "safety": 1}),
-        "family": Option({"safety": 3, "health": 2, "environment": 1}),
-        "retired": Option({"health": 3, "safety": 2, "environment": 1, "economy": -2}),
-    },
-    "work": {
-        "job_local": Option({"economy": 3}, {UNEMPLOYMENT: 1.6}),
-        "remote": Option({"digital": 4, "economy": -1}, {INFLATION: 1.4}),
-        "business": Option({"governance": 3, "economy": 2}, {GDP: 1.3}),
-        "none": Option({"health": 1, "economy": -2}),
-    },
-    "money": {
-        "salary": Option({"economy": 2}, {GDP: 1.6}),
-        "prices": Option({"economy": 1}, {INFLATION: 1.6}),
-        "affordable": Option({"economy": 1}, ideal={"economy": 0.6}),
-        "indifferent": Option({"economy": -2}),
-    },
-    "safety": {
-        "top": Option({"safety": 4}, {HOMICIDES: 1.4}),
-        "important": Option({"safety": 2}),
-        "relaxed": Option({"safety": -1}),
-    },
-    "health": {
-        "care": Option({"health": 3}, {HEALTH_SPENDING: 1.6}),
-        "longevity": Option({"health": 2}, {LIFE_EXPECTANCY: 1.6}),
-        "fine": Option({"health": -1}),
-    },
-    "climate": {
-        "clean_air": Option({"environment": 4}),
-        "nice": Option({"environment": 2}),
-        "indifferent": Option({"environment": -1}),
-    },
-    "values": {
-        "honesty": Option({"governance": 4}),
-        "stability": Option({"safety": 2, "governance": 1}, {STABILITY: 1.6}),
-        "opportunity": Option({"economy": 2, "digital": 2}),
-        "wellbeing": Option({"health": 2, "environment": 2}),
-    },
-    "online": {
-        "always": Option({"digital": 3}),
-        "sometimes": Option({"digital": 1}),
-        "rarely": Option({"digital": -1}),
-    },
-    "ambition": {
-        "best": Option(),
-        "balanced": Option(ideal=everywhere(0.8)),
-        "modest": Option(ideal=everywhere(0.6)),
-    },
+QUESTIONS: dict[str, Question] = {
+    "weekend": Question("🌤", {
+        "nature": Option("🌲", {"environment": 3}),
+        "city": Option("☕", {"digital": 2, "economy": 1}),
+        "family": Option("🧸", {"safety": 2, "health": 1}),
+    }),
+    "night": Question("🌙", {
+        "calm": Option("😌", {"safety": 4}, {HOMICIDES: 1.4}),
+        "alert": Option("👀", {"safety": 1}),
+        "fearless": Option("🤷", {"safety": -1}),
+    }),
+    "wallet": Question("💳", {
+        "salary": Option("💰", {"economy": 3}, {GDP: 1.5}),
+        "job": Option("💼", {"economy": 3}, {UNEMPLOYMENT: 1.6}),
+        "cheap": Option("🧺", {"economy": 1}, {INFLATION: 1.4}, {"economy": 0.6}),
+    }),
+    "doctor": Question("🩺", {
+        "clinic": Option("🏥", {"health": 3}, {HEALTH_SPENDING: 1.6}),
+        "prevention": Option("🥗", {"health": 2}, {LIFE_EXPECTANCY: 1.6}),
+        "tea": Option("🍵", {"health": -1}),
+    }),
+    "paperwork": Question("📄", {
+        "honest": Option("⚖", {"governance": 4}),
+        "stable": Option("🧭", {"governance": 1, "safety": 1}, {STABILITY: 1.6}),
+        "whatever": Option("🙃", {"governance": -1}),
+    }),
+    "online": Question("📱", {
+        "wifi": Option("💻", {"digital": 4, "economy": -1}),
+        "calls": Option("📞", {"digital": 1}),
+        "offline": Option("📚", {"digital": -1}),
+    }),
+    "dream": Question("✨", {
+        "best": Option("🏆"),
+        "balanced": Option("😊", ideal=everywhere(0.8)),
+        "reachable": Option("🎒", ideal=everywhere(0.6)),
+    }),
 }
+
+
+def chosen_options(answers: Mapping[str, str | None]) -> list[Option]:
+    """Options picked so far; skipped (None) and unanswered questions are left out."""
+    return [QUESTIONS[q].options[a] for q, a in answers.items() if q in QUESTIONS and a is not None]
+
+
+def answered_count(answers: Mapping[str, str | None]) -> int:
+    """How many questions got a real answer (not skipped)."""
+    return len(chosen_options(answers))
 
 
 def category_weights(chosen: list[Option]) -> dict[str, int]:
@@ -113,9 +119,9 @@ def desired_levels(chosen: list[Option]) -> dict[str, float]:
     return ideal
 
 
-def quiz_settings(answers: Mapping[str, str]) -> dict[str, object]:
-    """Settings (weights, multipliers, ideal, mode) from one answer per question."""
-    chosen = [QUESTIONS[question][answers[question]] for question in QUESTIONS]
+def quiz_settings(answers: Mapping[str, str | None]) -> dict[str, object]:
+    """Settings (weights, multipliers, ideal, mode) from the answers given; skips are neutral."""
+    chosen = chosen_options(answers)
     return profile_settings(category_weights(chosen), desired_levels(chosen), indicator_mults(chosen))
 
 

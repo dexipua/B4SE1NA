@@ -13,7 +13,7 @@ from explain import ranking_table, top_reasons, values_table, why_not
 from i18n import LANGUAGES, country_names, label, t
 from presets import PRESETS
 from processing import normalize
-from quiz import QUESTIONS, quiz_settings, top_categories
+from quiz import MAX_WEIGHT, QUESTIONS, answered_count, quiz_settings, top_categories
 from scoring import category_levels, loss_by_category, match, points_lost, similar_to
 from settings import DEFAULTS, MODE_BEST, MODE_IDEAL, MODE_SIMILAR, decode, encode, preset_settings, query
 
@@ -23,6 +23,7 @@ CARD_WIDTH = "stretch"  # cards share the row and wrap on narrow screens
 COUNTRY_WIDGETS = ("ref_country", "compare", "why_not", "regions")
 TABLE_HEIGHT = 386  # px: ten rows plus the header, no half-visible row
 PLOTLY_CONFIG = {"displayModeBar": False}  # plotly's modebar tooltips are English-only
+QUIZ_IDS = list(QUESTIONS)
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
@@ -99,22 +100,89 @@ def apply_preset(preset_id: str) -> None:
     st.session_state.update(preset_settings(preset_id))
 
 
+def quiz_answers() -> dict[str, str | None]:
+    """Answers so far, question id -> option id (None = skipped)."""
+    return st.session_state.setdefault("quiz_answers", {})
+
+
+def quiz_answer(question: str, option: str | None) -> None:
+    """on_click: record an answer (None = skip) and move to the next card."""
+    quiz_answers()[question] = option
+    st.session_state.quiz_step = QUIZ_IDS.index(question) + 1
+
+
+def quiz_back() -> None:
+    """on_click: return to the previous card; the earlier answer stays highlighted."""
+    st.session_state.quiz_step = max(st.session_state.get("quiz_step", 0) - 1, 0)
+
+
+def quiz_restart() -> None:
+    """on_click: clear all answers and start from the first card."""
+    st.session_state.quiz_step, st.session_state.quiz_answers = 0, {}
+
+
 def apply_quiz() -> None:
-    """on_click: turn the quiz answers into weights, multipliers and ideal, like a personal preset."""
-    settings = quiz_settings({q: st.session_state[f"quiz_{q}"] for q in QUESTIONS})
+    """on_click: turn the answers into weights, multipliers and ideal, like a personal preset."""
+    settings = quiz_settings(quiz_answers())
     st.session_state.update(settings)
     st.session_state.quiz_top = top_categories(settings)
+    quiz_restart()
+
+
+def quiz_nav(step: int, skip: str | None) -> None:
+    """Back on the left; Skip (for question `skip`) on the right."""
+    with st.container(horizontal=True, horizontal_alignment="distribute"):
+        st.button(tr("quiz.back"), icon=":material/arrow_back:", on_click=quiz_back, disabled=step == 0,
+                  type="tertiary", key="quiz_back")
+        if skip:
+            st.button(tr("quiz.skip"), icon=":material/skip_next:", on_click=quiz_answer, args=(skip, None),
+                      type="tertiary", key="quiz_skip")
+
+
+def quiz_card(step: int) -> None:
+    """One scenario as a card: big emoji, the question and one button per answer (click = next)."""
+    question_id, lng = QUIZ_IDS[step], lang()
+    question, current = QUESTIONS[question_id], quiz_answers().get(question_id)
+    st.progress(step / len(QUIZ_IDS), text=tr("quiz.progress", i=step + 1, n=len(QUIZ_IDS)))
+    if step == 0:
+        st.caption(tr("quiz.intro", n=len(QUIZ_IDS)))
+    with st.container(border=True, gap="small"):
+        st.markdown(f"# {question.icon}")
+        st.subheader(t(f"quiz.{question_id}", lng))
+        for option_id, option in question.options.items():
+            st.button(t(f"quiz.{question_id}.{option_id}", lng), icon=option.icon, width="stretch",
+                      type="primary" if option_id == current else "secondary",
+                      on_click=quiz_answer, args=(question_id, option_id), key=f"quiz_{question_id}_{option_id}")
+    quiz_nav(step, skip=question_id)
+
+
+def quiz_result() -> None:
+    """Summary card: the weights the answers produce, before they are applied."""
+    answers, n = quiz_answers(), len(QUIZ_IDS)
+    settings, answered = quiz_settings(answers), answered_count(answers)
+    st.progress(1.0)
+    with st.container(border=True):
+        st.subheader(tr("quiz.result_title"))
+        st.caption(tr("quiz.result_answered", answered=answered, n=n))
+        if not answered:
+            st.info(tr("quiz.all_skipped"), icon=":material/balance:")
+        for cat in sorted(CATEGORIES, key=lambda c: -settings[c]):
+            st.progress(settings[cat] / MAX_WEIGHT, text=f"{label('cat', cat, lang())} · {settings[cat]}")
+    quiz_nav(n, skip=None)
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        st.button(tr("quiz.restart"), icon=":material/restart_alt:", on_click=quiz_restart, key="quiz_restart")
+        if st.button(tr("quiz.apply"), icon=":material/travel_explore:", on_click=apply_quiz, type="primary",
+                     key="quiz_apply"):
+            st.rerun()  # close the dialog and show the new ranking
 
 
 def quiz_body() -> None:
-    """Quiz questions as radios with no default; applying needs every question answered."""
-    lng = lang()
-    st.caption(tr("quiz.intro", n=len(QUESTIONS)))
-    for question, options in QUESTIONS.items():
-        st.radio(t(f"quiz.{question}", lng), list(options), index=None, key=f"quiz_{question}",
-                 format_func=lambda option, q=question: t(f"quiz.{q}.{option}", lng))
-    answered = all(st.session_state.get(f"quiz_{q}") for q in QUESTIONS)
-    st.button(tr("quiz.apply"), on_click=apply_quiz, disabled=not answered, type="primary", width="stretch")
+    """Dialog content: one card per question, then the result. Progress survives closing the dialog."""
+    step = st.session_state.get("quiz_step", 0)
+    if step >= len(QUIZ_IDS):
+        quiz_result()
+    else:
+        quiz_card(step)
 
 
 def refresh_data() -> None:
@@ -146,7 +214,7 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
         for preset_id in PRESETS:
             st.button(label("preset", preset_id, lng), on_click=apply_preset, args=(preset_id,), width="content")
     if sb.button(tr("quiz.open"), icon=":material/quiz:", width="stretch"):
-        st.dialog(tr("quiz.title"), width="large")(quiz_body)()
+        st.dialog(tr("quiz.title"), width="medium")(quiz_body)()
 
     sb.subheader(tr("weights"))
     if mode == MODE_SIMILAR:
