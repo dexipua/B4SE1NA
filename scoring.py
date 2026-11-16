@@ -39,3 +39,13 @@ def similar_to(X: pd.DataFrame, iso3: str) -> tuple[pd.Series, pd.DataFrame]:
 def loss_by_category(loss: pd.DataFrame) -> pd.DataFrame:
     """Sum per-indicator losses into the six categories (in CATEGORIES order)."""
     return loss.T.groupby(CATEGORY_OF).sum().T.reindex(columns=list(CATEGORIES), fill_value=0.0)
+
+
+def points_lost(loss: pd.DataFrame) -> pd.DataFrame:
+    """Split each country's gap to a perfect score (100 - score) across indicators.
+
+    Shares are proportional to the indicator's loss, so a row sums exactly to 100 - score
+    and differences between two countries add up to their score difference.
+    """
+    total = np.sqrt(loss.sum(axis=1))
+    return loss.mul(100 / total.where(total > 0), axis=0).fillna(0.0)

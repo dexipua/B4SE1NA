@@ -1,3 +1,10 @@
 [client]
 # Hide Streamlit's main menu: its items (Rerun, Settings, Print...) are English-only.
 toolbarMode = "minimal"
+
+# Accent colors match the charts' first categorical slot (charts.LIGHT / charts.DARK).
+[theme.light]
+primaryColor = "#2a78d6"
+
+[theme.dark]
+primaryColor = "#3987e5"

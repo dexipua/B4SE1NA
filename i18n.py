@@ -1,4 +1,4 @@
-"""UI translations (uk, en, de, fr, zh) and localized country names."""
+"""All human-readable text in uk, en, de, fr, zh: UI strings, domain labels, country names."""
 
 import pandas as pd
 import pycountry
@@ -12,16 +12,19 @@ LANGUAGES: dict[str, str] = {
     "zh": "中文",
 }
 DEFAULT_LANG = "uk"
+LANG_INDEX: dict[str, int] = {lang: i for i, lang in enumerate(LANGUAGES)}
 
 # Every entry holds one translation per language, in LANGUAGES order.
 TEXTS: dict[str, tuple[str, str, str, str, str]] = {
     "page_title": ("Підбір країни", "Country Matcher", "Länderfinder", "Choix du pays", "国家匹配"),
-    "title": (
-        "🌍 Підбір країни за вашим профілем",
-        "🌍 Find the country that fits your profile",
-        "🌍 Finden Sie das Land, das zu Ihrem Profil passt",
-        "🌍 Trouvez le pays qui correspond à votre profil",
-        "🌍 寻找最符合您需求的国家",
+    "subtitle": (
+        "Бал 0–100 показує, наскільки країна близька до вашого ідеалу. Налаштуйте пріоритети на бічній панелі.",
+        "A 0–100 score shows how close each country is to your ideal. Set your priorities in the sidebar.",
+        "Die Punktzahl 0–100 zeigt, wie nah ein Land Ihrem Ideal kommt. Legen Sie Ihre Prioritäten in der "
+        "Seitenleiste fest.",
+        "Le score de 0 à 100 indique à quel point chaque pays est proche de votre idéal. Réglez vos priorités "
+        "dans le panneau latéral.",
+        "0–100分表示每个国家与您理想的接近程度。请在侧边栏设置您的优先事项。",
     ),
     "language": ("Мова", "Language", "Sprache", "Langue", "语言"),
     "mode": ("Режим", "Mode", "Modus", "Mode", "模式"),
@@ -56,6 +59,7 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "Multiplicateur de poids d'un indicateur au sein de sa catégorie.",
         "指标在其类别内的权重系数。",
     ),
+    "filters": ("Фільтри", "Filters", "Filter", "Filtres", "筛选"),
     "regions": ("Регіони", "Regions", "Regionen", "Régions", "地区"),
     "all_regions": ("Усі регіони", "All regions", "Alle Regionen", "Toutes les régions", "所有地区"),
     "complete_only": (
@@ -123,20 +127,26 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
     ),
     "why_not.pick": ("Країна X", "Country X", "Land X", "Pays X", "国家X"),
     "why_not.summary": (
-        "**{other}**: {other_score} балів проти {winner_score} у **{winner}**. "
-        "Де втрачено найбільше (внесок у відстань до ідеалу):",
-        "**{other}**: {other_score} points vs {winner_score} for **{winner}**. "
-        "Where it loses most (contribution to the distance from the ideal):",
-        "**{other}**: {other_score} Punkte gegenüber {winner_score} für **{winner}**. "
-        "Wo am meisten verloren geht (Beitrag zum Abstand vom Ideal):",
-        "**{other}** : {other_score} points contre {winner_score} pour **{winner}**. "
-        "Où il perd le plus (contribution à la distance à l'idéal) :",
-        "**{other}**：{other_score}分，而**{winner}**为{winner_score}分。"
-        "差距最大的方面（对与理想差距的贡献）：",
+        "**{other}** — {other_score}, **{winner}** — {winner_score}. Праворуч показники, де {other} "
+        "втрачає більше балів, ліворуч — де менше.",
+        "**{other}** scores {other_score}, **{winner}** {winner_score}. Bars to the right show where "
+        "{other} loses more points, bars to the left where it loses fewer.",
+        "**{other}** erreicht {other_score}, **{winner}** {winner_score}. Balken nach rechts zeigen, wo "
+        "{other} mehr Punkte verliert, Balken nach links, wo weniger.",
+        "**{other}** obtient {other_score}, **{winner}** {winner_score}. Les barres à droite montrent où "
+        "{other} perd plus de points, celles à gauche où il en perd moins.",
+        "**{other}**得{other_score}分，**{winner}**得{winner_score}分。向右的条形表示{other}失分更多的指标，"
+        "向左的表示失分更少的指标。",
     ),
-    "chart.loss_axis": (
-        "Внесок у відстань до ідеалу", "Contribution to distance from the ideal",
-        "Beitrag zum Abstand vom Ideal", "Contribution à la distance à l'idéal", "对与理想差距的贡献",
+    "why_not.details": ("Дані таблицею", "Show as table", "Als Tabelle anzeigen", "Afficher le tableau", "以表格显示"),
+    "chart.points_lost": (
+        "Втрачено балів до ідеалу", "Points lost vs. the ideal", "Verlorene Punkte zum Ideal",
+        "Points perdus par rapport à l'idéal", "与理想相比失去的分数",
+    ),
+    "chart.gap_axis": (
+        "Різниця втрачених балів: {other} − {winner}", "Difference in points lost: {other} − {winner}",
+        "Differenz der verlorenen Punkte: {other} − {winner}", "Écart de points perdus : {other} − {winner}",
+        "失分差：{other} − {winner}",
     ),
     "chart.ideal": ("Ідеал", "Ideal", "Ideal", "Idéal", "理想"),
     # Categories
@@ -146,45 +156,45 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
     "cat.environment": ("Довкілля", "Environment", "Umwelt", "Environnement", "环境"),
     "cat.governance": ("Врядування", "Governance", "Regierungsführung", "Gouvernance", "治理"),
     "cat.digital": ("Цифровізація", "Digital", "Digitalisierung", "Numérique", "数字化"),
-    # Indicators
-    "ind.VC.IHR.PSRC.P5": (
+    # Indicators (keyed by config.INDICATORS codes)
+    "ind.WB_WDI_VC_IHR_PSRC_P5": (
         "Умисні вбивства на 100 тис.", "Intentional homicides per 100k",
         "Vorsätzliche Tötungen je 100.000", "Homicides volontaires pour 100 000", "每10万人故意杀人数",
     ),
-    "ind.PV.EST": (
+    "ind.WB_WGI_PV_EST": (
         "Політична стабільність", "Political stability", "Politische Stabilität",
         "Stabilité politique", "政治稳定",
     ),
-    "ind.NY.GDP.PCAP.PP.CD": (
+    "ind.WB_WDI_NY_GDP_PCAP_PP_CD": (
         "ВВП на душу (ПКС, $)", "GDP per capita (PPP, $)", "BIP pro Kopf (KKP, $)",
         "PIB par habitant (PPA, $)", "人均GDP（购买力平价，美元）",
     ),
-    "ind.SL.UEM.TOTL.ZS": ("Безробіття, %", "Unemployment, %", "Arbeitslosigkeit, %", "Chômage, %", "失业率，%"),
-    "ind.FP.CPI.TOTL.ZG": ("Інфляція, %", "Inflation, %", "Inflation, %", "Inflation, %", "通货膨胀率，%"),
-    "ind.SP.DYN.LE00.IN": (
+    "ind.WB_WDI_SL_UEM_TOTL_ZS": ("Безробіття, %", "Unemployment, %", "Arbeitslosigkeit, %", "Chômage, %", "失业率，%"),
+    "ind.WB_WDI_FP_CPI_TOTL_ZG": ("Інфляція, %", "Inflation, %", "Inflation, %", "Inflation, %", "通货膨胀率，%"),
+    "ind.WB_WDI_SP_DYN_LE00_IN": (
         "Очікувана тривалість життя", "Life expectancy", "Lebenserwartung", "Espérance de vie", "预期寿命",
     ),
-    "ind.SH.XPD.CHEX.PC.CD": (
+    "ind.WB_WDI_SH_XPD_CHEX_PC_CD": (
         "Витрати на охорону здоров'я на душу, $", "Health spending per capita, $",
         "Gesundheitsausgaben pro Kopf, $", "Dépenses de santé par habitant, $", "人均卫生支出，美元",
     ),
-    "ind.EN.ATM.PM25.MC.M3": (
+    "ind.WB_WDI_EN_ATM_PM25_MC_M3": (
         "Забруднення повітря PM2.5", "Air pollution (PM2.5)", "Luftverschmutzung (PM2,5)",
         "Pollution de l'air (PM2,5)", "空气污染（PM2.5）",
     ),
-    "ind.CC.EST": (
+    "ind.WB_WGI_CC_EST": (
         "Контроль корупції", "Control of corruption", "Korruptionskontrolle",
         "Maîtrise de la corruption", "腐败控制",
     ),
-    "ind.IT.NET.USER.ZS": (
+    "ind.WB_WDI_IT_NET_USER_ZS": (
         "Користувачі інтернету, %", "Internet users, %", "Internetnutzer, %", "Internautes, %", "互联网用户，%",
     ),
-    # Presets (keyed by their name in presets.py)
-    "preset.Студент": ("Студент", "Student", "Student", "Étudiant", "学生"),
-    "preset.Віддалений працівник": (
+    # Presets (keyed by their id in presets.py)
+    "preset.student": ("Студент", "Student", "Student", "Étudiant", "学生"),
+    "preset.remote": (
         "Віддалений працівник", "Remote worker", "Remote-Beschäftigte", "Télétravailleur", "远程工作者",
     ),
-    "preset.Сім'я з дітьми": (
+    "preset.family": (
         "Сім'я з дітьми", "Family with children", "Familie mit Kindern", "Famille avec enfants",
         "有孩子的家庭",
     ),
@@ -226,7 +236,7 @@ ALPHA2_OVERRIDES: dict[str, str] = {"XKX": "XK"}  # World Bank code -> CLDR terr
 
 def t(key: str, lang: str, **fmt: object) -> str:
     """Translated text for `key`, with `{placeholders}` filled from `fmt`."""
-    text = TEXTS[key][list(LANGUAGES).index(lang)]
+    text = TEXTS[key][LANG_INDEX[lang]]
     return text.format(**fmt) if fmt else text
 
 

@@ -2,17 +2,19 @@
 
 import pandas as pd
 
-from config import LABEL_OF
+from i18n import DEFAULT_LANG, label, t
 
 
-def top_reasons(loss: pd.DataFrame, iso3: str, n: int = 3) -> list[str]:
-    """Labels of the indicators that pull the country furthest from the ideal."""
+def top_reasons(loss: pd.DataFrame, iso3: str, n: int = 3, lang: str = DEFAULT_LANG) -> list[str]:
+    """Names of the indicators that pull the country furthest from the ideal."""
     worst = loss.loc[iso3].nlargest(n)
-    return [LABEL_OF[code] for code, value in worst.items() if value > 0]
+    return [label("ind", code, lang) for code, value in worst.items() if value > 0]
 
 
-def why_not(loss: pd.DataFrame, iso3: str, winner_iso3: str) -> pd.DataFrame:
-    """Per-indicator loss of a country vs the winner, biggest gap first."""
-    table = pd.DataFrame({"Країна": loss.loc[iso3], "Лідер": loss.loc[winner_iso3]})
-    table["Різниця"] = table["Країна"] - table["Лідер"]
-    return table.rename(index=LABEL_OF).sort_values("Різниця", ascending=False)
+def why_not(loss: pd.DataFrame, iso3: str, winner_iso3: str, lang: str = DEFAULT_LANG) -> pd.DataFrame:
+    """Per-indicator loss of a country vs the winner, biggest gap first, with translated headers."""
+    country, leader, gap = t("col.country", lang), t("col.leader", lang), t("col.gap", lang)
+    table = pd.DataFrame({country: loss.loc[iso3], leader: loss.loc[winner_iso3]})
+    table[gap] = table[country] - table[leader]
+    table.index = [label("ind", code, lang) for code in table.index]
+    return table.rename_axis(t("col.indicator", lang)).sort_values(gap, ascending=False)

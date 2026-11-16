@@ -4,3 +4,5 @@ numpy>=2.5
 plotly>=7.1
 requests>=2.34
 pytest>=9.2
+babel>=2.18
+pycountry>=26.2

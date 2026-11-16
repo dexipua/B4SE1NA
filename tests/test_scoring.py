@@ -8,7 +8,7 @@ import pytest
 
 from config import CATEGORIES, CATEGORY_OF, INDICATOR_CODES, LOWER_IS_BETTER
 from processing import min_max, normalize
-from scoring import expand_weights, loss_by_category, match, similar_to
+from scoring import expand_weights, loss_by_category, match, points_lost, similar_to
 
 MOCK_CSV = Path(__file__).parent.parent / "data" / "mock_dataset.csv"
 
@@ -108,3 +108,11 @@ def test_loss_by_category_sums_to_total(X: pd.DataFrame, uniform: pd.Series) -> 
     by_cat = loss_by_category(loss)
     assert list(by_cat.columns) == list(CATEGORIES)
     pd.testing.assert_series_equal(by_cat.sum(axis=1), loss.sum(axis=1))
+
+
+def test_points_lost_sum_to_score_gap(X: pd.DataFrame, uniform: pd.Series) -> None:
+    """Per-indicator points lost add up to 100 - score; a perfect match loses nothing."""
+    score, loss = match(X, X.loc["DEU"], uniform)
+    lost = points_lost(loss)
+    assert lost.sum(axis=1).to_numpy() == pytest.approx((100 - score).to_numpy())
+    assert (lost.loc["DEU"] == 0).all()

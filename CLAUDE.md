@@ -1,7 +1,9 @@
 # Country Matcher
 
 Streamlit app that finds countries closest to a user's ideal profile using World Bank open data.
-Hackathon project: Python must be the main language. UI strings are in Ukrainian.
+Hackathon project: Python must be the main language.
+UI is in 5 languages (uk default, en, de, fr, zh). Never hardcode user-visible text:
+add it to i18n.TEXTS with all 5 translations and render it via t()/label().
 
 ## Core model
 Each country is a vector of 10 indicators, each normalized to 0..1 (higher = better).
@@ -9,17 +11,23 @@ The user provides an IDEAL vector (default: all 1.0) and weights per indicator.
 Ranking = smallest weighted Euclidean distance to the ideal. One function powers every mode.
 
 ## Architecture (one module per concern)
-- config.py: INDICATORS (code, db, category, lower_is_better, label, log_scale), CATEGORIES (6);
-  derived lookups INDICATOR_CODES, CATEGORY_OF, LABEL_OF, LOWER_IS_BETTER, LOG_SCALED
+- config.py: ids and semantics only (no display text): INDICATORS (code, db, category, lower_is_better,
+  log_scale), CATEGORIES (tuple of 6 ids); derived INDICATOR_CODES, CATEGORY_OF, LOWER_IS_BETTER, LOG_SCALED
 - data_loader.py: load_dataset(refresh=False) -> DataFrame; caches to data/dataset.csv
 - processing.py: normalize(df, max_missing=2) -> DataFrame (iso3 x 10 indicators, 0..1)
 - scoring.py:
   expand_weights(cat_weights: dict) -> Series  # category weight / n indicators in it
   match(X, ideal: Series, w: Series) -> (score: Series 0-100, loss: DataFrame)
   loss_by_category(loss) -> DataFrame
-- explain.py: top_reasons(loss, iso3, n=3) -> list[str]; why_not(loss, iso3, winner_iso3) -> DataFrame
-- charts.py: loss_bar, radar (10 axes, country vs ideal), world_map; each returns a plotly Figure, no Streamlit
-- presets.py: PRESETS = {name: {"weights": {...6 categories...}, "ideal": {...optional...}}}
+  points_lost(loss) -> DataFrame  # loss as score points; a row sums to 100 - score. Use it for all display
+- explain.py: top_reasons(loss, iso3, n=3, lang) -> list[str]; why_not(loss, iso3, winner_iso3, lang) -> DataFrame
+- charts.py: loss_bar, radar (10 axes, country vs ideal), world_map, gap_bar (why-not diverging bars);
+  each takes lang and dark, returns a plotly Figure, no Streamlit. Shared style via styled(); palette
+  LIGHT/DARK matches .streamlit/config.toml primaryColor. Long labels go through wrap() (CJK-aware).
+- presets.py: PRESETS = {id: {"weights": {...6 categories...}, "ideal": {...optional...}}}
+- i18n.py: all display text. LANGUAGES, TEXTS {key: (uk, en, de, fr, zh)}; t(key, lang, **fmt);
+  label(prefix, id, lang) for cat./ind./preset./region. keys; country_names(fallback, lang) via CLDR
+  (babel + pycountry). tests/test_i18n.py fails on any missing translation or Cyrillic leak.
 - app.py: Streamlit UI only; no business logic
 
 ## match() reference implementation
@@ -55,6 +63,7 @@ Winsorize 5-95 percentile, log for GDP, min-max, invert lower-is-better. Do this
 - Type hints + short docstrings on every function. No dead code, no stray print().
 - Small functions, no copy-paste, idiomatic pandas/numpy/plotly.
 - Streamlit: preset buttons write to st.session_state via on_click; widgets use key=; use @st.cache_data.
+  Widget values are language-neutral ids shown via format_func, so switching language keeps state.
 - UI: 6 category sliders on the sidebar, per-indicator tuning inside st.expander. No custom HTML/CSS.
 - Only create files listed above unless asked. Run code after each change.
 - Do not commit; the human commits (each teammate commits their own work).

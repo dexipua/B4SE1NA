@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from i18n import DEFAULT_LANG, t
 from presets import PRESETS
 
 APP = str(Path(__file__).parent.parent / "app.py")
@@ -22,17 +23,17 @@ def test_default_mode_shows_top_five(app: AppTest) -> None:
     assert len(app.metric) == 5
 
 
-@pytest.mark.parametrize("mode", ["Мій ідеал", "Схожі на країну"])
+@pytest.mark.parametrize("mode", ["ideal", "similar"])
 def test_other_modes_render(app: AppTest, mode: str) -> None:
     """Switching modes keeps the page working."""
-    app.sidebar.radio(key="mode").set_value(mode).run()
+    app.sidebar.radio(key="mode").set_value(t(f"mode.{mode}", DEFAULT_LANG)).run()
     assert not app.exception
     assert len(app.metric) == 5
 
 
 def test_similar_mode_excludes_reference(app: AppTest) -> None:
     """The reference country never appears in its own 'similar' list."""
-    app.sidebar.radio(key="mode").set_value("Схожі на країну").run()
+    app.sidebar.radio(key="mode").set_value(t("mode.similar", DEFAULT_LANG)).run()
     ref = app.sidebar.selectbox(key="ref_country").value
     assert ref not in app.selectbox(key="why_not").options
 

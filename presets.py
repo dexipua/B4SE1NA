@@ -1,7 +1,10 @@
-"""Ready-made user profiles: category weights (0-10) and optional ideal levels (0-1)."""
+"""Ready-made user profiles: category weights (0-10) and optional ideal levels (0-1).
+
+Keys are stable ids; their display names live in i18n.py under "preset.<id>".
+"""
 
 PRESETS: dict[str, dict[str, dict[str, float]]] = {
-    "Студент": {
+    "student": {
         "weights": {
             "safety": 6,
             "economy": 7,
@@ -12,7 +15,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"economy": 0.7},
     },
-    "Віддалений працівник": {
+    "remote": {
         "weights": {
             "safety": 7,
             "economy": 5,
@@ -23,7 +26,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"economy": 0.6, "governance": 0.8},
     },
-    "Сім'я з дітьми": {
+    "family": {
         "weights": {
             "safety": 10,
             "economy": 6,
