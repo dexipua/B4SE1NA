@@ -68,3 +68,29 @@ def score_bar(score: pd.Series, names: pd.Series, top_n: int = 10) -> go.Figure:
     )
     fig.update_layout(yaxis={"autorange": "reversed", "title": ""}, bargap=0.35)
     return fig
+
+def category_scatter(
+        cat: pd.DataFrame,
+        score: pd.Series,
+        names: pd.Series,
+        x_cat: str = "safety",
+        y_cat: str = "economy",
+) -> go.Figure:
+    """Scatter of countries by two categories (default: safety vs economy), colored by score."""
+    data = pd.DataFrame({
+        "iso3": cat.index,
+        "Країна": names[cat.index].values,
+        "x": cat[x_cat].values,
+        "y": cat[y_cat].values,
+        "Бал": score.reindex(cat.index).values,
+    }).dropna(subset=["x", "y"])
+    if data.empty:
+        return go.Figure()
+    fig = px.scatter(
+        data, x="x", y="y", color="Бал", hover_name="Країна",
+        hover_data={"iso3": False, "x": ":.2f", "y": ":.2f", "Бал": ":.1f"},
+        color_continuous_scale=SEQUENTIAL,
+        labels={"x": CATEGORIES[x_cat], "y": CATEGORIES[y_cat]},
+    )
+    fig.update_traces(marker={"size": 9, "line": {"width": 0}})
+    return fig
