@@ -21,14 +21,14 @@ MODES: tuple[str, ...] = ("best", "ideal", "similar")
 
 INDICATORS: list[Indicator] = [
     Indicator("WB_WDI_VC_IHR_PSRC_P5", 2, "safety", True),
-    Indicator("WB_WGI_PV_EST", 3, "safety", False),
+    Indicator("GOV_WGI_PV", 3, "safety", False),
     Indicator("WB_WDI_NY_GDP_PCAP_PP_CD", 2, "economy", False, log_scale=True),
     Indicator("WB_WDI_SL_UEM_TOTL_ZS", 2, "economy", True),
     Indicator("WB_WDI_FP_CPI_TOTL_ZG", 2, "economy", True),
     Indicator("WB_WDI_SP_DYN_LE00_IN", 2, "health", False),
     Indicator("WB_WDI_SH_XPD_CHEX_PC_CD", 2, "health", False),
     Indicator("WB_WDI_EN_ATM_PM25_MC_M3", 2, "environment", True),
-    Indicator("WB_WGI_CC_EST", 3, "governance", False),
+    Indicator("GOV_WGI_CC", 3, "governance", False),
     Indicator("WB_WDI_IT_NET_USER_ZS", 2, "digital", False),
 ]
 
