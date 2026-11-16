@@ -9,7 +9,8 @@ The user provides an IDEAL vector (default: all 1.0) and weights per indicator.
 Ranking = smallest weighted Euclidean distance to the ideal. One function powers every mode.
 
 ## Architecture (one module per concern)
-- config.py: INDICATORS (code, db, category, lower_is_better), CATEGORIES (6)
+- config.py: INDICATORS (code, db, category, lower_is_better, label, log_scale), CATEGORIES (6);
+  derived lookups INDICATOR_CODES, CATEGORY_OF, LABEL_OF, LOWER_IS_BETTER, LOG_SCALED
 - data_loader.py: load_dataset(refresh=False) -> DataFrame; caches to data/dataset.csv
 - processing.py: normalize(df, max_missing=2) -> DataFrame (iso3 x 10 indicators, 0..1)
 - scoring.py:
@@ -38,8 +39,12 @@ If wsum == 0 for a country, drop it. If all weights are 0, return empty results.
 ## Data
 Index: iso3. Columns: country, region, one per indicator.
 Categories: safety, economy, health, environment, governance, digital.
-Indicators: VC.IHR.PSRC.P5, PV.EST (db=3), NY.GDP.PCAP.PP.CD, SL.UEM.TOTL.ZS,
-FP.CPI.TOTL.ZG, SP.DYN.LE00.IN, SH.XPD.CHEX.PC.CD, EN.ATM.PM25.MC.M3, CC.EST (db=3), IT.NET.USER.ZS.
+Indicator ids (Data360 style, defined only in config.py; used as CSV columns everywhere):
+WB_WDI_VC_IHR_PSRC_P5, WB_WGI_PV_EST (db=3), WB_WDI_NY_GDP_PCAP_PP_CD, WB_WDI_SL_UEM_TOTL_ZS,
+WB_WDI_FP_CPI_TOTL_ZG, WB_WDI_SP_DYN_LE00_IN, WB_WDI_SH_XPD_CHEX_PC_CD, WB_WDI_EN_ATM_PM25_MC_M3,
+WB_WGI_CC_EST (db=3), WB_WDI_IT_NET_USER_ZS.
+data_loader.api_code() maps them to World Bank v2 API ids (SP.DYN.LE00.IN, GOV_WGI_PV.EST)
+and downloads with plain requests (2 batched calls + country list).
 Filter aggregates (World, Euro area, income groups). Most recent value per country.
 
 ## Normalization

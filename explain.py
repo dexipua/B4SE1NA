@@ -2,13 +2,11 @@
 
 import pandas as pd
 
-from config import INDICATORS
-
-LABEL_OF: dict[str, str] = {ind.code: ind.label for ind in INDICATORS}
+from config import LABEL_OF
 
 
 def top_reasons(loss: pd.DataFrame, iso3: str, n: int = 3) -> list[str]:
-    """Indicators that pull the country furthest from the ideal."""
+    """Labels of the indicators that pull the country furthest from the ideal."""
     worst = loss.loc[iso3].nlargest(n)
     return [LABEL_OF[code] for code, value in worst.items() if value > 0]
 

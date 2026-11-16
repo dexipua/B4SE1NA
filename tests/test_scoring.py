@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from config import CATEGORIES, INDICATOR_CODES, LOWER_IS_BETTER
+from config import CATEGORIES, CATEGORY_OF, INDICATOR_CODES, LOWER_IS_BETTER
 from processing import min_max, normalize
 from scoring import expand_weights, loss_by_category, match, similar_to
 
@@ -96,9 +96,10 @@ def test_similar_to_excludes_reference(X: pd.DataFrame) -> None:
 def test_expand_weights_splits_category_evenly() -> None:
     """Category weight is divided among its indicators."""
     w = expand_weights({"economy": 6, "digital": 3})
-    assert w["NY.GDP.PCAP.PP.CD"] == pytest.approx(2)
-    assert w["IT.NET.USER.ZS"] == pytest.approx(3)
-    assert w["PV.EST"] == 0
+    by_category = w.groupby(CATEGORY_OF)
+    assert by_category.sum().to_dict() == pytest.approx(
+        {"economy": 6, "digital": 3, "safety": 0, "health": 0, "environment": 0, "governance": 0})
+    assert by_category.nunique().max() == 1
 
 
 def test_loss_by_category_sums_to_total(X: pd.DataFrame, uniform: pd.Series) -> None:

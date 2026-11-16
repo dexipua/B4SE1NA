@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from config import CATEGORIES, INDICATORS
+from config import CATEGORIES, INDICATOR_CODES, LABEL_OF
 
 SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
 IDEAL_COLOR = "#8a8984"
@@ -27,13 +27,12 @@ def loss_bar(loss_cat: pd.DataFrame, names: pd.Series, top_n: int = 10) -> go.Fi
 
 def radar(rows: pd.DataFrame, ideal: pd.Series, names: pd.Series) -> go.Figure:
     """Radar over all indicators: selected countries vs the ideal profile."""
-    labels = [ind.label for ind in INDICATORS]
-    codes = [ind.code for ind in INDICATORS]
+    labels = [LABEL_OF[code] for code in INDICATOR_CODES]
     fig = go.Figure()
     traces = [(names[iso3], rows.loc[iso3], color, "solid") for iso3, color in zip(rows.index, SERIES_COLORS)]
     traces.append(("Ідеал", ideal, IDEAL_COLOR, "dash"))
     for name, values, color, dash in traces:
-        r = values[codes].tolist()
+        r = values[INDICATOR_CODES].tolist()
         fig.add_trace(go.Scatterpolar(
             r=r + r[:1], theta=labels + labels[:1], name=name,
             line={"color": color, "width": 2, "dash": dash},

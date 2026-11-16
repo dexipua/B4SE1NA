@@ -3,7 +3,6 @@
 import pandas as pd
 import requests
 import streamlit as st
-import wbgapi as wb
 
 from charts import loss_bar, radar, world_map
 from config import CATEGORIES, INDICATORS, INDICATOR_CODES
@@ -55,7 +54,7 @@ def refresh_data() -> None:
     """on_click: download fresh data from the World Bank and drop cached frames."""
     try:
         load_dataset(refresh=True)
-    except (requests.RequestException, wb.APIError) as err:
+    except requests.RequestException as err:
         st.session_state.refresh_error = str(err)
         return
     st.session_state.refresh_error = None
