@@ -23,19 +23,19 @@ CATEGORIES: dict[str, str] = {
 }
 
 INDICATORS: list[Indicator] = [
-    Indicator("VC.IHR.PSRC.P5", 2, "safety", True, "Умисні вбивства на 100 тис."),
-    Indicator("PV.EST", 3, "safety", False, "Політична стабільність"),
-    Indicator("NY.GDP.PCAP.PP.CD", 2, "economy", False, "ВВП на душу (ПКС, $)"),
-    Indicator("SL.UEM.TOTL.ZS", 2, "economy", True, "Безробіття, %"),
-    Indicator("FP.CPI.TOTL.ZG", 2, "economy", True, "Інфляція, %"),
-    Indicator("SP.DYN.LE00.IN", 2, "health", False, "Очікувана тривалість життя"),
-    Indicator("SH.XPD.CHEX.PC.CD", 2, "health", False, "Витрати на охорону здоров'я на душу, $"),
-    Indicator("EN.ATM.PM25.MC.M3", 2, "environment", True, "Забруднення повітря PM2.5"),
-    Indicator("CC.EST", 3, "governance", False, "Контроль корупції"),
-    Indicator("IT.NET.USER.ZS", 2, "digital", False, "Користувачі інтернету, %"),
+    Indicator("WB_WDI_VC_IHR_PSRC_P5", 2, "safety", True, "Умисні вбивства на 100 тис."),
+    Indicator("WB_WGI_PV_EST", 3, "safety", False, "Політична стабільність"),
+    Indicator("WB_WDI_NY_GDP_PCAP_PP_CD", 2, "economy", False, "ВВП на душу (ПКС, $)"),
+    Indicator("WB_WDI_SL_UEM_TOTL_ZS", 2, "economy", True, "Безробіття, %"),
+    Indicator("WB_WDI_FP_CPI_TOTL_ZG", 2, "economy", True, "Інфляція, %"),
+    Indicator("WB_WDI_SP_DYN_LE00_IN", 2, "health", False, "Очікувана тривалість життя"),
+    Indicator("WB_WDI_SH_XPD_CHEX_PC_CD", 2, "health", False, "Витрати на охорону здоров'я на душу, $"),
+    Indicator("WB_WDI_EN_ATM_PM25_MC_M3", 2, "environment", True, "Забруднення повітря PM2.5"),
+    Indicator("WB_WGI_CC_EST", 3, "governance", False, "Контроль корупції"),
+    Indicator("WB_WDI_IT_NET_USER_ZS", 2, "digital", False, "Користувачі інтернету, %"),
 ]
 
 INDICATOR_CODES: list[str] = [ind.code for ind in INDICATORS]
 CATEGORY_OF: dict[str, str] = {ind.code: ind.category for ind in INDICATORS}
 LOWER_IS_BETTER: list[str] = [ind.code for ind in INDICATORS if ind.lower_is_better]
-LOG_SCALED: list[str] = ["NY.GDP.PCAP.PP.CD"]
+LOG_SCALED: list[str] = ["WB_WDI_NY_GDP_PCAP_PP_CD"]
