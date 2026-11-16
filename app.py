@@ -1,19 +1,18 @@
 """Streamlit UI for Country Matcher; all logic lives in the other modules."""
 
-from pathlib import Path
-
 import pandas as pd
+import requests
 import streamlit as st
+import wbgapi as wb
 
 from charts import loss_bar, radar, world_map
 from config import CATEGORIES, INDICATORS, INDICATOR_CODES
+from data_loader import DATASET_PATH, load_dataset
 from explain import top_reasons, why_not
 from presets import PRESETS
 from processing import normalize
-from scoring import expand_weights, loss_by_category, match
+from scoring import expand_weights, loss_by_category, match, similar_to
 
-DATA_DIR = Path(__file__).parent / "data"
-DATASET, MOCK_DATASET = DATA_DIR / "dataset.csv", DATA_DIR / "mock_dataset.csv"
 MODE_BEST, MODE_IDEAL, MODE_SIMILAR = "Найкраща", "Мій ідеал", "Схожі на країну"
 DEFAULTS: dict[str, object] = {
     "mode": MODE_BEST,
@@ -24,16 +23,15 @@ DEFAULTS: dict[str, object] = {
 
 
 @st.cache_data
-def load_raw() -> tuple[pd.DataFrame, bool]:
-    """Read the real dataset, falling back to mock data; also report which one."""
-    is_mock = not DATASET.exists()
-    return pd.read_csv(MOCK_DATASET if is_mock else DATASET, index_col="iso3"), is_mock
+def load_raw() -> pd.DataFrame:
+    """Cached World Bank dataset (mock data until the first refresh)."""
+    return load_dataset()
 
 
 @st.cache_data
 def load_matrix(max_missing: int) -> pd.DataFrame:
     """Normalized indicator matrix for the given missing-data tolerance."""
-    return normalize(load_raw()[0], max_missing=max_missing)
+    return normalize(load_raw(), max_missing=max_missing)
 
 
 def init_state() -> None:
@@ -51,6 +49,17 @@ def apply_preset(name: str) -> None:
     for code in INDICATOR_CODES:
         st.session_state[f"mult_{code}"] = 1.0
     st.session_state.mode = MODE_IDEAL if preset.get("ideal") else MODE_BEST
+
+
+def refresh_data() -> None:
+    """on_click: download fresh data from the World Bank and drop cached frames."""
+    try:
+        load_dataset(refresh=True)
+    except (requests.RequestException, wb.APIError) as err:
+        st.session_state.refresh_error = str(err)
+        return
+    st.session_state.refresh_error = None
+    st.cache_data.clear()
 
 
 def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
@@ -87,21 +96,34 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
     sb.multiselect("Регіони", sorted(regions.dropna().unique()), key="regions",
                    placeholder="Усі регіони")
     sb.toggle("Лише країни з повними даними", key="complete_only")
+    sb.button("Оновити дані зі Світового банку", on_click=refresh_data, width="stretch")
+    if st.session_state.get("refresh_error"):
+        sb.error(f"Не вдалося завантажити дані: {st.session_state.refresh_error}")
 
 
-def build_query(X: pd.DataFrame) -> tuple[pd.Series, pd.Series, list[str]]:
-    """Ideal vector, indicator weights and countries to exclude for the current mode."""
+def run_query(X: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
+    """Score, per-indicator loss and the ideal profile for the current mode."""
     state = st.session_state
     if state.mode == MODE_SIMILAR:
-        ref = state.ref_country
-        return X.loc[ref], pd.Series(1.0, index=X.columns), [ref]
+        score, loss = similar_to(X, state.ref_country)
+        return score, loss, X.loc[state.ref_country]
     mults = pd.Series({code: state[f"mult_{code}"] for code in INDICATOR_CODES})
     weights = expand_weights({cat: state[cat] for cat in CATEGORIES}) * mults
     if state.mode == MODE_IDEAL:
         ideal = pd.Series({ind.code: state[f"ideal_{ind.category}"] for ind in INDICATORS})
     else:
         ideal = pd.Series(1.0, index=X.columns)
-    return ideal, weights, []
+    return *match(X, ideal, weights), ideal
+
+
+def filter_regions(score: pd.Series, loss: pd.DataFrame,
+                   regions: pd.Series) -> tuple[pd.Series, pd.DataFrame]:
+    """Keep only countries from the regions chosen in the sidebar (all if none)."""
+    chosen = st.session_state.regions
+    if not chosen:
+        return score, loss
+    keep = regions[score.index].isin(chosen).to_numpy()
+    return score[keep], loss[keep]
 
 
 def top_cards(score: pd.Series, loss: pd.DataFrame, names: pd.Series) -> None:
@@ -151,18 +173,17 @@ def main() -> None:
     """Page entry point."""
     st.set_page_config(page_title="Підбір країни", page_icon="🌍", layout="wide")
     init_state()
-    raw, is_mock = load_raw()
+    raw = load_raw()
     names, regions = raw["country"], raw["region"]
     X = load_matrix(0 if st.session_state.get("complete_only") else 2)
     sidebar(X, names, regions)
 
     st.title("🌍 Підбір країни за вашим профілем")
-    if is_mock:
-        st.caption("Демо-дані: data/dataset.csv ще не створено, використано mock_dataset.csv.")
+    if not DATASET_PATH.exists():
+        st.caption("Демо-дані: натисніть «Оновити дані зі Світового банку», щоб отримати реальні.")
 
-    ideal, weights, exclude = build_query(X)
-    pool = X[regions[X.index].isin(st.session_state.regions)] if st.session_state.regions else X
-    score, loss = match(pool.drop(index=exclude, errors="ignore"), ideal, weights)
+    score, loss, ideal = run_query(X)
+    score, loss = filter_regions(score, loss, regions)
     if score.empty:
         st.info("Немає результатів: задайте ненульову вагу хоча б одній категорії "
                 "або розширте фільтр регіонів.")

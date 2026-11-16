@@ -1,7 +1,6 @@
-.idea
-
-.venv
-
-.vscode
-
+.idea/
+.venv/
+.vscode/
+__pycache__/
+.pytest_cache/
 CLAUDE.md

@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from config import CATEGORIES, INDICATOR_CODES, LOWER_IS_BETTER
-from processing import normalize
+from processing import min_max, normalize
 from scoring import expand_weights, loss_by_category, match, similar_to
 
 MOCK_CSV = Path(__file__).parent.parent / "data" / "mock_dataset.csv"
@@ -36,6 +36,14 @@ def test_normalize_shape_and_range(raw: pd.DataFrame, X: pd.DataFrame) -> None:
     assert list(X.columns) == INDICATOR_CODES
     assert ((X >= 0) & (X <= 1) | X.isna()).all().all()
     assert "IND" in raw.index and "IND" not in X.index
+
+
+def test_min_max_constant_column_and_nan() -> None:
+    """A constant column maps to 0.5 and missing values stay missing."""
+    X = pd.DataFrame({"flat": [3.0, 3.0, np.nan], "ramp": [0.0, 5.0, 10.0]})
+    out = min_max(X)
+    assert out["flat"].iloc[:2].tolist() == [0.5, 0.5] and np.isnan(out["flat"].iloc[2])
+    assert out["ramp"].tolist() == [0.0, 0.5, 1.0]
 
 
 def test_all_zero_weights_returns_empty(X: pd.DataFrame) -> None:
