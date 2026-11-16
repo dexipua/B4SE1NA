@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import INDICATOR_CODES, YEAR_COLUMNS
-from explain import MISSING, ranking_table, values_table
+from explain import MISSING, ranking_table, strengths_and_weaknesses, values_table
 from i18n import format_number, label, t
 
 GDP, INFLATION = "WB_WDI_NY_GDP_PCAP_PP_CD", "WB_WDI_FP_CPI_TOTL_ZG"
@@ -38,3 +38,20 @@ def test_values_table_without_year_columns() -> None:
     raw = pd.DataFrame({code: [74.692] for code in INDICATOR_CODES}, index=["UKR"])
     table = values_table(raw, ["UKR"], pd.Series({"UKR": "Україна"}), "uk")
     assert set(table["Україна"]) == {format_number(74.692, "uk")} == {"74,7"}
+
+
+def test_strengths_and_weaknesses_rank_by_level() -> None:
+    """Best and worst normalized levels, with actual values; missing indicators are ignored."""
+    levels = pd.Series(np.linspace(1, 0, len(INDICATOR_CODES)), index=INDICATOR_CODES)
+    levels[INDICATOR_CODES[1]] = np.nan
+    raw = pd.Series({code: 10.0 for code in INDICATOR_CODES})
+    strong, weak = strengths_and_weaknesses(levels, raw, "en", n=2)
+    assert strong == [f"{label('ind', INDICATOR_CODES[0], 'en')}: 10", f"{label('ind', INDICATOR_CODES[2], 'en')}: 10"]
+    assert weak[0].startswith(label("ind", INDICATOR_CODES[-1], "en"))
+
+
+def test_strengths_and_weaknesses_never_overlap() -> None:
+    """With few known indicators a line appears on one list only."""
+    levels = pd.Series({INDICATOR_CODES[0]: 0.9, INDICATOR_CODES[1]: 0.1})
+    strong, weak = strengths_and_weaknesses(levels, pd.Series({c: 1.0 for c in INDICATOR_CODES[:2]}), "en")
+    assert len(strong) == 2 and weak == []

@@ -230,3 +230,20 @@ def why_not_bar(lost_cat: pd.DataFrame, names: pd.Series, iso3: str, winner: str
     """'Why not X?' by category: points X loses minus points the winner loses (positive = X is worse)."""
     gap = (lost_cat.loc[iso3] - lost_cat.loc[winner]).rename(index=lambda cat: label("cat", cat, lang))
     return gap_bar(gap, names[iso3], names[winner], lang, dark=dark)
+
+
+def category_profile(levels: pd.Series, lang: str, dark: bool = False) -> go.Figure:
+    """One country's level (0-100, relative to all countries) in each category, one colored bar each."""
+    pal = palette(dark)
+    names = [label("cat", cat, lang) for cat in levels.index]
+    fig = go.Figure(go.Bar(
+        x=levels.values, y=names, orientation="h", marker={"color": pal.series[:len(levels)]},
+        texttemplate="%{x:.0f}", textposition="outside", cliponaxis=False,
+        hovertemplate="<b>%{y}</b>: %{x:.0f}<extra></extra>",
+    ))
+    fig.update_layout(
+        showlegend=False, bargap=0.3,
+        xaxis={"title": t("profile.levels", lang), "range": [0, 100], "gridcolor": pal.grid, "zeroline": False},
+        yaxis={"autorange": "reversed", "automargin": True},
+    )
+    return styled(fig, pal, height=90 + 34 * len(levels))

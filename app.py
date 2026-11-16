@@ -1,16 +1,18 @@
 """Streamlit UI for Country Matcher; all logic lives in the other modules."""
 
+from collections.abc import Collection
 from urllib.parse import urlencode, urlsplit
 
 import pandas as pd
 import requests
 import streamlit as st
 
-from charts import category_scatter, gap_bar, loss_bar, radar, score_bar, why_not_bar, world_map
-from config import CATEGORIES, INDICATOR_CODES
-from data_loader import DATASET_PATH, load_dataset
-from explain import ranking_table, top_reasons, values_table, why_not
-from i18n import LANGUAGES, country_names, label, t
+from charts import (category_profile, category_scatter, gap_bar, loss_bar, radar, score_bar, why_not_bar,
+                    world_map)
+from config import CATEGORIES, INDICATOR_CODES, MODES
+from data_loader import DATASET_PATH, load_dataset, summarize
+from explain import ranking_table, strengths_and_weaknesses, top_reasons, values_table, why_not
+from i18n import LANGUAGES, country_names, format_list, label, t
 from presets import PRESETS
 from processing import normalize
 from quiz import MAX_WEIGHT, QUESTIONS, answered_count, quiz_settings, top_categories
@@ -20,7 +22,9 @@ from settings import DEFAULTS, MODE_BEST, MODE_IDEAL, MODE_SIMILAR, decode, enco
 MAX_COMPARE = 3
 CSV_NAME = "country-ranking.csv"
 CARD_WIDTH = "stretch"  # cards share the row and wrap on narrow screens
-COUNTRY_WIDGETS = ("ref_country", "compare", "why_not", "regions")
+# Widgets whose values are ids but whose visible labels are translated (see relabel_widgets).
+TRANSLATED_WIDGETS = ("mode", "ref_country", "regions", "compare", "explore_x", "explore_y", "profile_country",
+                      "why_not")
 TABLE_HEIGHT = 386  # px: ten rows plus the header, no half-visible row
 PLOTLY_CONFIG = {"displayModeBar": False}  # plotly's modebar tooltips are English-only
 QUIZ_IDS = list(QUESTIONS)
@@ -37,6 +41,12 @@ def load_raw() -> pd.DataFrame:
 def load_matrix(max_missing: int) -> pd.DataFrame:
     """Normalized indicator matrix for the given missing-data tolerance."""
     return normalize(load_raw(), max_missing=max_missing)
+
+
+@st.cache_data
+def load_summary() -> dict[str, int | None]:
+    """Country count and year span of the loaded dataset."""
+    return summarize(load_raw())
 
 
 @st.cache_data
@@ -75,14 +85,31 @@ def tr(key: str, **fmt: object) -> str:
     return t(key, lang(), **fmt)
 
 
-def relabel_countries() -> None:
-    """on_change of the language: re-send country widgets' values so the browser shows the new names.
+def relabel_widgets() -> None:
+    """on_change of the language: re-send every translated widget's value (an id).
 
-    The frontend otherwise keeps the old-language labels of already selected options.
+    Streamlit round-trips a selectbox/radio/multiselect value through its *label*. After a
+    language switch the browser would send back the old-language label, which matches no
+    option, and Streamlit then returns that raw label instead of the id.
     """
-    for key in COUNTRY_WIDGETS:
+    for key in TRANSLATED_WIDGETS:
         if key in st.session_state:
             st.session_state[key] = st.session_state[key]
+
+
+def keep_valid(key: str, options: Collection[object]) -> None:
+    """Before a widget is drawn: forget a stored value that is not one of its options.
+
+    Safety net for stale browser sessions (e.g. a label left over from another language or
+    an older app version), which would otherwise reach the data code as a bogus id.
+    """
+    state = st.session_state
+    if key not in state:
+        return
+    if isinstance(state[key], list):
+        state[key] = [value for value in state[key] if value in options]
+    elif state[key] is not None and state[key] not in options:
+        del state[key]
 
 
 def init_state(raw: pd.DataFrame) -> None:
@@ -121,11 +148,26 @@ def quiz_restart() -> None:
     st.session_state.quiz_step, st.session_state.quiz_answers = 0, {}
 
 
+def open_quiz() -> None:
+    """on_click of the sidebar button: show the quiz dialog (it stays open across reruns)."""
+    st.session_state.quiz_open = True
+
+
+def close_quiz() -> None:
+    """on_dismiss (X, Esc, click outside): hide the dialog; answers so far are kept."""
+    st.session_state.quiz_open = False
+
+
 def apply_quiz() -> None:
-    """on_click: turn the answers into weights, multipliers and ideal, like a personal preset."""
+    """on_click: turn the answers into weights, multipliers and ideal, like a personal preset.
+
+    Runs as a callback, i.e. before any widget is drawn, so it may set the sidebar sliders.
+    quiz_top marks "applied, page not refreshed yet": see quiz_body.
+    """
     settings = quiz_settings(quiz_answers())
     st.session_state.update(settings)
     st.session_state.quiz_top = top_categories(settings)
+    st.session_state.quiz_open = False
     quiz_restart()
 
 
@@ -156,8 +198,17 @@ def quiz_card(step: int) -> None:
     quiz_nav(step, skip=question_id)
 
 
+def preview_matches(settings: dict[str, object], n: int = 3) -> list[str]:
+    """Names of the top countries these settings would give, with the current data filters."""
+    X = load_matrix(0 if st.session_state.get("complete_only") else 2)
+    score, loss = match(X, *query(DEFAULTS | settings))
+    score, _ = filter_regions(score, loss, load_raw()["region"])
+    names = load_names(lang())
+    return [names[iso3] for iso3 in score.index[:n]]
+
+
 def quiz_result() -> None:
-    """Summary card: the weights the answers produce, before they are applied."""
+    """Summary card: the weights the answers produce and the countries they lead to, before applying."""
     answers, n = quiz_answers(), len(QUIZ_IDS)
     settings, answered = quiz_settings(answers), answered_count(answers)
     st.progress(1.0)
@@ -168,16 +219,25 @@ def quiz_result() -> None:
             st.info(tr("quiz.all_skipped"), icon=":material/balance:")
         for cat in sorted(CATEGORIES, key=lambda c: -settings[c]):
             st.progress(settings[cat] / MAX_WEIGHT, text=f"{label('cat', cat, lang())} · {settings[cat]}")
+        if matches := preview_matches(settings):
+            st.markdown(f"**{tr('quiz.preview', countries=format_list(matches, lang()))}**")
     quiz_nav(n, skip=None)
     with st.container(horizontal=True, horizontal_alignment="right"):
         st.button(tr("quiz.restart"), icon=":material/restart_alt:", on_click=quiz_restart, key="quiz_restart")
-        if st.button(tr("quiz.apply"), icon=":material/travel_explore:", on_click=apply_quiz, type="primary",
-                     key="quiz_apply"):
-            st.rerun()  # close the dialog and show the new ranking
+        st.button(tr("quiz.apply"), icon=":material/travel_explore:", on_click=apply_quiz, type="primary",
+                  key="quiz_apply")
 
 
 def quiz_body() -> None:
-    """Dialog content: one card per question, then the result. Progress survives closing the dialog."""
+    """Dialog content: one card per question, then the result. Progress survives closing the dialog.
+
+    A click inside a dialog reruns only the dialog, so after "apply" the sidebar would keep
+    showing the old sliders (and send their old values back on the next click). When the
+    answers were just applied, rerun the whole app instead: sliders and ranking update and
+    the dialog closes.
+    """
+    if "quiz_top" in st.session_state:
+        st.rerun()
     step = st.session_state.get("quiz_step", 0)
     if step >= len(QUIZ_IDS):
         quiz_result()
@@ -204,17 +264,19 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
     """
     sb, lng = st.sidebar, lang()
     sb.selectbox(tr("language"), list(LANGUAGES), format_func=LANGUAGES.get, key="lang",
-                 on_change=relabel_countries)
-    sb.radio(tr("mode"), [MODE_BEST, MODE_IDEAL, MODE_SIMILAR],
+                 on_change=relabel_widgets)
+    keep_valid("mode", MODES)
+    sb.radio(tr("mode"), MODES,
              format_func=lambda mode: t(f"mode.{mode}", lng), key="mode")
-    mode = st.session_state.mode
+    mode = st.session_state.get("mode", MODE_BEST)
 
     sb.subheader(tr("presets"))
     with sb.container(horizontal=True, wrap=True, gap="small"):
         for preset_id in PRESETS:
             st.button(label("preset", preset_id, lng), on_click=apply_preset, args=(preset_id,), width="content")
-    if sb.button(tr("quiz.open"), icon=":material/quiz:", width="stretch"):
-        st.dialog(tr("quiz.title"), width="medium")(quiz_body)()
+    sb.button(tr("quiz.open"), icon=":material/quiz:", width="stretch", on_click=open_quiz)
+    if st.session_state.get("quiz_open"):  # drawn before the sliders below, which it may update
+        st.dialog(tr("quiz.title"), width="medium", on_dismiss=close_quiz)(quiz_body)()
 
     sb.subheader(tr("weights"))
     if mode == MODE_SIMILAR:
@@ -228,6 +290,7 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
             sb.slider(label("cat", cat, lng), 0.0, 1.0, step=0.05, key=f"ideal_{cat}")
     if mode == MODE_SIMILAR:
         options = sorted(X.index, key=names.get)
+        keep_valid("ref_country", options)
         st.session_state.setdefault("ref_country", options[0])
         sb.selectbox(tr("ref_country"), options, format_func=names.get, key="ref_country",
                      placeholder=tr("choose"))
@@ -239,13 +302,18 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
                       disabled=mode == MODE_SIMILAR)
 
     sb.subheader(tr("filters"))
-    sb.multiselect(tr("regions"), sorted(regions.dropna().unique()), key="regions",
+    region_options = sorted(regions.dropna().unique())
+    keep_valid("regions", region_options)
+    sb.multiselect(tr("regions"), region_options, key="regions",
                    format_func=lambda region: label("region", region, lng), placeholder=tr("all_regions"))
     sb.toggle(tr("complete_only"), key="complete_only")
     if local_visit():  # public visitors must not trigger World Bank downloads on the host
         sb.button(tr("refresh"), on_click=refresh_data, width="stretch")
     if st.session_state.get("refresh_failed"):
         sb.error(tr("refresh_error"))
+    info = load_summary()
+    if info["first"] is not None:
+        sb.caption(tr("data_info", countries=info["countries"], first=info["first"], last=info["last"]))
 
 
 def sync_link() -> None:
@@ -284,7 +352,7 @@ def top_cards(score: pd.Series, lost: pd.DataFrame, names: pd.Series) -> None:
         for rank, (iso3, value) in enumerate(score.head(5).items(), start=1):
             reasons = top_reasons(lost, iso3, lang=lang())
             st.metric(f"{rank}. {names[iso3]}", f"{value:.1f}", border=True, width=CARD_WIDTH,
-                      help=tr("weakest", reasons=", ".join(reasons)) if reasons else None)
+                      help=tr("weakest", reasons=format_list(reasons, lang())) if reasons else None)
 
 
 def ranking_tab(score: pd.Series, lost_cat: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
@@ -307,8 +375,10 @@ def compare_tab(raw: pd.DataFrame, X: pd.DataFrame, score: pd.Series, ideal: pd.
 
     The limit is enforced here rather than with max_selections, whose message is English-only.
     """
-    chosen = st.multiselect(tr("compare_pick"), list(score.index), default=list(score.index[:MAX_COMPARE]),
-                            format_func=names.get, key="compare", placeholder=tr("choose"))
+    keep_valid("compare", score.index)
+    st.session_state.setdefault("compare", list(score.index[:MAX_COMPARE]))  # seeded, not default=: see relabel
+    chosen = st.multiselect(tr("compare_pick"), list(score.index), format_func=names.get, key="compare",
+                            placeholder=tr("choose"))
     if len(chosen) > MAX_COMPARE:
         st.warning(tr("compare_limit"))
     if not chosen:
@@ -324,18 +394,47 @@ def explore_tab(X: pd.DataFrame, score: pd.Series, names: pd.Series) -> None:
     """Scatter of countries by two chosen categories (safety vs economy by default), colored by score."""
     lng = lang()
     x_col, y_col = st.columns(2)
-    x_cat = x_col.selectbox(tr("explore.x"), CATEGORIES, index=CATEGORIES.index("safety"), key="explore_x",
-                            format_func=lambda cat: label("cat", cat, lng))
-    y_cat = y_col.selectbox(tr("explore.y"), CATEGORIES, index=CATEGORIES.index("economy"), key="explore_y",
-                            format_func=lambda cat: label("cat", cat, lng))
+    for key, default in (("explore_x", "safety"), ("explore_y", "economy")):
+        keep_valid(key, CATEGORIES)
+        st.session_state.setdefault(key, default)  # seeded, not index=: see relabel_widgets
+    x_cat = x_col.selectbox(tr("explore.x"), CATEGORIES, key="explore_x", format_func=lambda cat: label("cat", cat, lng))
+    y_cat = y_col.selectbox(tr("explore.y"), CATEGORIES, key="explore_y", format_func=lambda cat: label("cat", cat, lng))
     show(category_scatter(category_levels(X), score, names, lng, x_cat, y_cat, dark=dark()))
     st.caption(tr("explore.note"))
+
+
+def bullet_list(title: str, lines: list[str]) -> str:
+    """Markdown: a bold title followed by one bullet per line."""
+    return "\n".join([f"**{title}**", "", *(f"- {line}" for line in lines)])
+
+
+def profile_tab(raw: pd.DataFrame, X: pd.DataFrame, score: pd.Series, lost: pd.DataFrame,
+                names: pd.Series) -> None:
+    """One country at a glance: rank, score, best and worst indicators, level per category."""
+    lng, ranked = lang(), list(score.index)
+    keep_valid("profile_country", ranked)
+    iso3 = st.selectbox(tr("profile.pick"), ranked, format_func=names.get, key="profile_country",
+                        placeholder=tr("choose"))
+    with st.container(horizontal=True, wrap=True, gap="small"):
+        st.metric(tr("profile.rank"), tr("profile.rank_value", rank=ranked.index(iso3) + 1, n=len(ranked)),
+                  border=True, width=CARD_WIDTH)
+        st.metric(tr("col.score"), f"{score[iso3]:.1f}", border=True, width=CARD_WIDTH)
+    reasons = top_reasons(lost, iso3, lang=lng)
+    if reasons:
+        st.caption(tr("weakest", reasons=format_list(reasons, lng)))
+    strong, weak = strengths_and_weaknesses(X.loc[iso3], raw.loc[iso3], lng)
+    strong_col, weak_col = st.columns(2)
+    strong_col.markdown(bullet_list(tr("profile.strengths"), strong))
+    weak_col.markdown(bullet_list(tr("profile.weaknesses"), weak))
+    show(category_profile(category_levels(X).loc[iso3], lng, dark=dark()))
+    st.caption(tr("profile.note"))
 
 
 def why_not_block(score: pd.Series, lost: pd.DataFrame, lost_cat: pd.DataFrame, names: pd.Series) -> None:
     """Explain what separates a chosen country from the winner: by category, then by indicator."""
     winner = score.index[0]
     st.subheader(tr("why_not.title", winner=names[winner]), divider="gray")
+    keep_valid("why_not", score.index[1:])
     other = st.selectbox(tr("why_not.pick"), list(score.index[1:]), format_func=names.get,
                          key="why_not", placeholder=tr("choose"))
     st.markdown(tr("why_not.summary", other=names[other], other_score=f"{score[other]:.1f}",
@@ -361,7 +460,7 @@ def main() -> None:
     st.title(f"🌍 {tr('page_title')}")
     st.caption(tr("subtitle"))
     if quiz_top := st.session_state.pop("quiz_top", None):
-        st.success(tr("quiz.done", cats=", ".join(label("cat", cat, lang()) for cat in quiz_top)))
+        st.success(tr("quiz.done", cats=format_list((label("cat", cat, lang()) for cat in quiz_top), lang())))
     if not DATASET_PATH.exists():
         st.caption(tr("demo_data"))
 
@@ -374,14 +473,16 @@ def main() -> None:
     lost_cat = loss_by_category(lost)
 
     top_cards(score, lost, names)
-    tab_rank, tab_compare, tab_explore, tab_map = st.tabs(
-        [tr("tab.rank"), tr("tab.compare"), tr("tab.explore"), tr("tab.map")])
+    tab_rank, tab_compare, tab_explore, tab_profile, tab_map = st.tabs(
+        [tr("tab.rank"), tr("tab.compare"), tr("tab.explore"), tr("tab.profile"), tr("tab.map")])
     with tab_rank:
         ranking_tab(score, lost_cat, names, regions)
     with tab_compare:
         compare_tab(raw, X, score, ideal, names)
     with tab_explore:
         explore_tab(X, score, names)
+    with tab_profile:
+        profile_tab(raw, X, score, lost, names)
     with tab_map:
         show(world_map(score, names, lang(), dark=dark()))
     if len(score) > 1:

@@ -5,6 +5,10 @@ and may lower the desired level of a category (modest = more accessible countrie
 Every category starts at BASE_POINTS and the result is scaled so the top category gets
 MAX_WEIGHT. A skipped question (missing or None answer) is simply left out: it adds nothing
 anywhere, so it is neutral, and skipping everything yields equal weights.
+
+Calibration (checked over all 3^7 answer combinations, see tests/test_quiz.py): every category
+is the top priority in 10-24% of them, and the "dream" answer only lowers the economy target,
+so "within reach" means affordable, never less safe or less healthy.
 Display text lives in i18n.TEXTS under "quiz.<question>" and "quiz.<question>.<option>".
 """
 
@@ -14,7 +18,7 @@ from typing import NamedTuple
 from config import CATEGORIES
 from settings import profile_settings
 
-HOMICIDES, STABILITY, GDP = "WB_WDI_VC_IHR_PSRC_P5", "WB_WGI_PV_EST", "WB_WDI_NY_GDP_PCAP_PP_CD"
+HOMICIDES, STABILITY, GDP = "WB_WDI_VC_IHR_PSRC_P5", "GOV_WGI_PV", "WB_WDI_NY_GDP_PCAP_PP_CD"
 UNEMPLOYMENT, INFLATION = "WB_WDI_SL_UEM_TOTL_ZS", "WB_WDI_FP_CPI_TOTL_ZG"
 LIFE_EXPECTANCY, HEALTH_SPENDING = "WB_WDI_SP_DYN_LE00_IN", "WB_WDI_SH_XPD_CHEX_PC_CD"
 
@@ -39,11 +43,6 @@ class Question(NamedTuple):
     options: dict[str, Option]
 
 
-def everywhere(level: float) -> dict[str, float]:
-    """The same desired level for every category."""
-    return dict.fromkeys(CATEGORIES, level)
-
-
 QUESTIONS: dict[str, Question] = {
     "weekend": Question("🌤", {
         "nature": Option("🌲", {"environment": 3}),
@@ -51,7 +50,7 @@ QUESTIONS: dict[str, Question] = {
         "family": Option("🧸", {"safety": 2, "health": 1}),
     }),
     "night": Question("🌙", {
-        "calm": Option("😌", {"safety": 4}, {HOMICIDES: 1.4}),
+        "calm": Option("😌", {"safety": 3}, {HOMICIDES: 1.4}),
         "alert": Option("👀", {"safety": 1}),
         "fearless": Option("🤷", {"safety": -1}),
     }),
@@ -61,8 +60,8 @@ QUESTIONS: dict[str, Question] = {
         "cheap": Option("🧺", {"economy": 1}, {INFLATION: 1.4}, {"economy": 0.6}),
     }),
     "doctor": Question("🩺", {
-        "clinic": Option("🏥", {"health": 3}, {HEALTH_SPENDING: 1.6}),
-        "prevention": Option("🥗", {"health": 2}, {LIFE_EXPECTANCY: 1.6}),
+        "clinic": Option("🏥", {"health": 4}, {HEALTH_SPENDING: 1.6}),
+        "prevention": Option("🥗", {"health": 2, "environment": 1}, {LIFE_EXPECTANCY: 1.6}),
         "tea": Option("🍵", {"health": -1}),
     }),
     "paperwork": Question("📄", {
@@ -77,8 +76,8 @@ QUESTIONS: dict[str, Question] = {
     }),
     "dream": Question("✨", {
         "best": Option("🏆"),
-        "balanced": Option("😊", ideal=everywhere(0.8)),
-        "reachable": Option("🎒", ideal=everywhere(0.6)),
+        "balanced": Option("😊", ideal={"economy": 0.8}),  # a bit more affordable than the richest
+        "reachable": Option("🎒", ideal={"economy": 0.6}),  # affordable; safety and health still aim high
     }),
 }
 

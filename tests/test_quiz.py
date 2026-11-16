@@ -1,5 +1,7 @@
 """Preference quiz: answers map to sensible weights, skips are neutral, and results plug into the ranking."""
 
+import itertools
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
@@ -85,7 +87,27 @@ def test_desired_level_is_the_most_modest_answer() -> None:
     modest = quiz_settings({"wallet": "cheap", "dream": "balanced"})
     assert best["mode"] == "best"
     assert modest["mode"] == "ideal" and modest["ideal_economy"] == 0.6
-    assert modest["ideal_safety"] == 0.8
+    assert all(modest[f"ideal_{cat}"] == 1.0 for cat in CATEGORIES if cat != "economy")
+
+
+def test_modest_dreams_only_lower_the_economy_target() -> None:
+    """'Within reach' means affordable: it must never make the quiz prefer less safe or healthy countries."""
+    for option_id, option in QUESTIONS["dream"].options.items():
+        assert set(option.ideal) <= {"economy"}, option_id
+
+
+def all_answer_combinations() -> list[dict[str, str]]:
+    """Every way to answer all questions (3^7 = 2187)."""
+    ids = list(QUESTIONS)
+    return [dict(zip(ids, combo)) for combo in itertools.product(*(QUESTIONS[q].options for q in ids))]
+
+
+def test_no_category_is_starved_or_dominant() -> None:
+    """Across all answer combinations each category is the top priority in 5-35% of them."""
+    tops = Counter(top_categories(quiz_settings(answers), 1)[0] for answers in all_answer_combinations())
+    total = sum(tops.values())
+    shares = {cat: tops[cat] / total for cat in CATEGORIES}
+    assert all(0.05 <= share <= 0.35 for share in shares.values()), shares
 
 
 def test_multipliers_apply_and_stay_on_the_slider_grid() -> None:

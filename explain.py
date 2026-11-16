@@ -50,3 +50,20 @@ def values_table(raw: pd.DataFrame, iso3s: list[str], names: pd.Series,
         {names[iso3]: [format_value(raw.loc[iso3], code, lang) for code in INDICATOR_CODES] for iso3 in iso3s},
         index=pd.Index([label("ind", code, lang) for code in INDICATOR_CODES], name=t("col.indicator", lang)),
     )
+
+
+def strengths_and_weaknesses(levels: pd.Series, raw_row: pd.Series, lang: str = DEFAULT_LANG,
+                             n: int = 3) -> tuple[list[str], list[str]]:
+    """The `n` indicators where a country ranks best and worst against all others.
+
+    `levels` is the country's normalized row (0..1, higher = better); each line names the
+    indicator and its actual value with year. Indicators never appear on both lists.
+    """
+    known = levels.dropna().sort_values(ascending=False)
+    best = list(known.index[:n])
+    worst = [code for code in known.index[::-1][:n] if code not in best]
+
+    def line(code: str) -> str:
+        return f"{label('ind', code, lang)}: {format_value(raw_row, code, lang)}"
+
+    return [line(code) for code in best], [line(code) for code in worst]

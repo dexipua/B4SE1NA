@@ -1,5 +1,6 @@
 """Translations are complete and no untranslated text reaches the rendered page."""
 
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -10,14 +11,16 @@ from google.protobuf import text_format
 from streamlit.testing.v1 import AppTest
 
 from config import CATEGORIES, INDICATOR_CODES
-from i18n import LANGUAGES, TEXTS, _alpha2, country_names, t
+from i18n import LANGUAGES, LOCALES_DIR, SOURCE_LANG, TEXTS, _alpha2, country_names, format_list, t
 from presets import PRESETS
 
 ROOT = Path(__file__).parent.parent
 APP = str(ROOT / "app.py")
 DATASETS = [ROOT / "data" / "dataset.csv", ROOT / "data" / "mock_dataset.csv"]
 CYRILLIC = re.compile("[а-яіїєґА-ЯІЇЄҐ]")
+PLACEHOLDER = re.compile(r"\{(\w+)\}")
 NON_UK = [lang for lang in LANGUAGES if lang != "uk"]
+MAX_COMPARE = 3  # app.MAX_COMPARE; app.py runs the page on import, so it is not imported here
 
 
 def raw_frames() -> Iterator[pd.DataFrame]:
@@ -28,15 +31,26 @@ def raw_frames() -> Iterator[pd.DataFrame]:
 
 
 def test_every_text_has_all_languages() -> None:
-    """Each entry carries a non-empty string per language."""
+    """Each entry carries a non-empty string in every language."""
     for key, values in TEXTS.items():
-        assert len(values) == len(LANGUAGES) and all(v.strip() for v in values), key
+        missing = [lang for lang in LANGUAGES if not values.get(lang, "").strip()]
+        assert missing == [], (key, missing)
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_locale_files_match_the_source(lang: str) -> None:
+    """Every locale file has exactly the English keys, with the same {placeholders}."""
+    source = json.loads((LOCALES_DIR / f"{SOURCE_LANG}.json").read_text(encoding="utf-8"))
+    texts = json.loads((LOCALES_DIR / f"{lang}.json").read_text(encoding="utf-8"))
+    assert set(texts) == set(source)
+    wrong = [key for key in source if set(PLACEHOLDER.findall(texts[key])) != set(PLACEHOLDER.findall(source[key]))]
+    assert wrong == []
 
 
 def test_non_ukrainian_texts_have_no_cyrillic() -> None:
     """Translations are not left as copies of the Ukrainian source."""
     for key, values in TEXTS.items():
-        for lang, text in zip(LANGUAGES, values):
+        for lang, text in values.items():
             assert lang == "uk" or not CYRILLIC.search(text), (key, lang)
 
 
@@ -80,9 +94,12 @@ def test_no_ukrainian_left_on_page(lang: str, mode: str) -> None:
     at.session_state["refresh_failed"] = True
     at.run()
     at.sidebar.radio(key="mode").set_value(t(f"mode.{mode}", lang)).run()
+    # Pick one more country than the compare limit allows, so its warning renders too. The
+    # starting selection can hold fewer than 3 (similar mode drops the reference country).
     compare = at.multiselect(key="compare")
-    extra = next(iso3 for iso3 in ["UKR", "POL", "DEU", "FRA"] if iso3 not in compare.value)
-    compare.set_value([*compare.value, extra]).run()
+    ref = at.session_state["ref_country"] if mode == "similar" else None
+    extras = [iso3 for iso3 in ["UKR", "POL", "DEU", "FRA", "ESP"] if iso3 not in compare.value and iso3 != ref]
+    compare.set_value([*compare.value, *extras][:MAX_COMPARE + 1]).run()
     assert not at.exception
     assert at.warning, "compare-limit warning should render"
     text = page_text(at)
@@ -90,3 +107,11 @@ def test_no_ukrainian_left_on_page(lang: str, mode: str) -> None:
         text = text.replace(native_name, "")
     leftovers = CYRILLIC.findall(text)
     assert leftovers == [], (lang, mode, "".join(leftovers)[:80])
+
+
+def test_format_list_follows_each_language() -> None:
+    """Lists of names use the language's own separators and conjunction."""
+    assert format_list(["A", "B", "C"], "en") == "A, B, and C"
+    assert format_list(["A", "B", "C"], "uk") == "A, B і C"
+    assert format_list(["A", "B", "C"], "ja") == "A、B、C"
+    assert format_list(["A"], "de") == "A"

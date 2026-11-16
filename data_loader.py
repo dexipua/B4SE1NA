@@ -1,122 +1,136 @@
+"""Download World Bank indicators from the Data360 API and cache them in data/dataset.csv.
+
+Columns: country, region, one value column per indicator, then the year of each value.
+Country names and regions come from the classic v2 API (Data360 has no country list).
+"""
+
+from collections.abc import Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import pandas as pd
 import requests
-import csv
-import time
 
-from config import INDICATOR_CODES, INDICATORS, Indicator
+from config import INDICATOR_CODES, INDICATORS, YEAR_COLUMNS, Indicator
 
-BASE_URL = "https://data360api.worldbank.org/data360/data"
-WGI_DB = 3
+DATA_DIR = Path(__file__).parent / "data"
+DATASET_PATH = DATA_DIR / "dataset.csv"
+MOCK_PATH = DATA_DIR / "mock_dataset.csv"
+DATA360_URL = "https://data360api.worldbank.org/data360/data"
+COUNTRIES_URL = "https://api.worldbank.org/v2/en/country"
+DATABASES = {2: "WB_WDI", 3: "WB_WGI"}  # config.Indicator.db -> Data360 DATABASE_ID
+# WGI publishes the estimate plus ranks, scores and standard errors; we rank on the estimate.
+EXTRA_FILTERS = {3: {"COMP_BREAKDOWN_1": "WGI_EST"}}
+TOTALS = {"_T", "_Z", "WGI_EST"}  # "total"/"not applicable" codes of the breakdown dimensions
+BREAKDOWNS = ("SEX", "AGE", "URBANISATION", "COMP_BREAKDOWN_1")
+FIRST_YEAR = 2010  # older values are stale; skipping them loses <1% of values and halves the download
+AGGREGATE_REGION = "NA"  # region id the v2 API gives to World, income groups, Euro area...
+TIMEOUT = 60
+WORKERS = 4  # indicators downloaded in parallel
 
 
-def api_code(indicator: Indicator) -> str:
-    """Translate config indicator codes into Data360 INDICATOR IDs."""
-    if indicator.db == WGI_DB:
-        return indicator.code if indicator.code.startswith("GOV_WGI_") else f"GOV_WGI_{indicator.code}"
-    normalized = indicator.code.replace(".", "_")
-    return normalized if normalized.startswith("WB_WDI_") else f"WB_WDI_{normalized}"
-
-
-def fetch_countries_metadata() -> pd.DataFrame:
-    url = "https://api.worldbank.org/v2/countries"
-    resp = requests.get(url, params={"format": "json", "per_page": 500}, timeout=30)
+def get_json(session: requests.Session, url: str, **params: object) -> object:
+    """GET one page as parsed JSON; HTTP errors raise requests exceptions."""
+    resp = session.get(url, params=params, timeout=TIMEOUT)
     resp.raise_for_status()
-    payload = resp.json()[1]
-
-    rows = [
-        {
-            "iso3": item["id"],
-            "country": item["name"].strip(),
-            "region": item["region"]["value"].strip(),
-        }
-        for item in payload
-        if item["region"]["id"] != "NA"
-    ]
-    if not rows:
-        return pd.DataFrame(columns=["country", "region"]).rename_axis("iso3")
-    return pd.DataFrame(rows).set_index("iso3")
+    return resp.json()
 
 
-def fetch_indicator(
-    indicator: Indicator,
-    iso3_codes: list[str],
-    year_from: int = 2015,
-    year_to: int = 2025,
-) -> pd.DataFrame:
-    rows = []
+def fetch_countries_metadata(session: requests.Session) -> pd.DataFrame:
+    """Country name and region for every non-aggregate economy, indexed by iso3."""
+    _, rows = get_json(session, COUNTRIES_URL, format="json", per_page=1000)
+    return pd.DataFrame(
+        {"iso3": r["id"], "country": r["name"].strip(), "region": r["region"]["value"].strip()}
+        for r in rows if r["region"]["id"] != AGGREGATE_REGION
+    ).set_index("iso3")
+
+
+def fetch_rows(session: requests.Session, params: dict[str, str]) -> Iterator[dict]:
+    """Every observation matching `params`, following Data360's skip-based paging."""
     skip = 0
+    while True:
+        body = get_json(session, DATA360_URL, **params, skip=skip)
+        if not isinstance(body, dict) or "value" not in body:
+            raise requests.HTTPError(f"Unexpected Data360 response: {body}")
+        batch = body["value"]
+        yield from batch
+        skip += len(batch)
+        if not batch or skip >= int(body.get("count", 0)):
+            return
+
+
+def fetch_indicator(session: requests.Session, indicator: Indicator, iso3s: Sequence[str]) -> pd.DataFrame:
+    """Latest value since FIRST_YEAR per country: DataFrame iso3 -> value, year."""
     params = {
-        "DATABASE_ID": "WB_WGI" if indicator.db == WGI_DB else "WB_WDI",
-        "INDICATOR": api_code(indicator),
-        "REF_AREA": ",".join(iso3_codes),
-        "timePeriodFrom": str(year_from),
-        "timePeriodTo": str(year_to),
+        "DATABASE_ID": DATABASES[indicator.db],
+        "INDICATOR": indicator.code,
+        "REF_AREA": ",".join(iso3s),
+        "timePeriodFrom": str(FIRST_YEAR),
+        **EXTRA_FILTERS.get(indicator.db, {}),
+    }
+    rows = pd.DataFrame(fetch_rows(session, params))
+    if rows.empty:
+        return pd.DataFrame(columns=["value", "year"], index=pd.Index([], name="iso3"))
+    totals = pd.concat([rows[col].isin(TOTALS) for col in BREAKDOWNS if col in rows], axis=1).all(axis=1)
+    return (
+        rows[totals]
+        .assign(value=lambda d: pd.to_numeric(d["OBS_VALUE"], errors="coerce"),
+                year=lambda d: pd.to_numeric(d["TIME_PERIOD"], errors="coerce"))
+        .dropna(subset=["value", "year"])
+        .loc[lambda d: d["year"] >= FIRST_YEAR]  # the API does not always honour timePeriodFrom
+        .sort_values("year")
+        .drop_duplicates("REF_AREA", keep="last")
+        .set_index("REF_AREA")
+        .rename_axis("iso3")[["value", "year"]]
+    )
+
+
+def fetch_indicators(session: requests.Session, iso3s: Sequence[str]) -> pd.DataFrame:
+    """All indicators side by side (downloaded in parallel), then the year of each value."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        results = dict(zip(INDICATOR_CODES, pool.map(lambda ind: fetch_indicator(session, ind, iso3s), INDICATORS)))
+    values = pd.DataFrame({code: r["value"] for code, r in results.items()}).reindex(columns=INDICATOR_CODES)
+    years = pd.DataFrame({YEAR_COLUMNS[code]: r["year"] for code, r in results.items()}).astype("Int64")
+    return values.join(years.reindex(columns=list(YEAR_COLUMNS.values())))
+
+
+def download_dataset() -> pd.DataFrame:
+    """Countries joined with their indicators; economies without any data are dropped."""
+    with requests.Session() as session:
+        countries = fetch_countries_metadata(session)
+        return countries.join(fetch_indicators(session, list(countries.index)), how="inner")
+
+
+def load_dataset(refresh: bool = False) -> pd.DataFrame:
+    """Return the cached dataset; download it first when `refresh` is set.
+
+    Without a cache the bundled mock dataset is returned, so the app runs offline.
+    Year columns are optional (older caches lack them) and load as nullable integers.
+    """
+    if refresh:
+        download_dataset().to_csv(DATASET_PATH, index_label="iso3")
+    path = DATASET_PATH if DATASET_PATH.exists() else MOCK_PATH
+    df = pd.read_csv(path, index_col="iso3", keep_default_na=False, na_values=[""])
+    return df.astype({col: "Int64" for col in YEAR_COLUMNS.values() if col in df})
+
+
+def summarize(df: pd.DataFrame) -> dict[str, int | None]:
+    """Countries, known values and the year span of a dataset (years are None without year columns)."""
+    years = df[[col for col in YEAR_COLUMNS.values() if col in df]].stack()
+    return {
+        "countries": len(df),
+        "values": int(df[INDICATOR_CODES].notna().sum().sum()),
+        "first": int(years.min()) if len(years) else None,
+        "last": int(years.max()) if len(years) else None,
     }
 
-    while True:
-        resp = requests.get(BASE_URL, params={**params, "skip": skip}, timeout=30)
-        resp.raise_for_status()
-        payload = resp.json()
-        batch = payload.get("value", [])
-        rows.extend(batch)
-        if len(rows) >= payload.get("count", 0) or not batch:
-            break
-        skip += 1000
-        time.sleep(0.2)
 
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return pd.DataFrame(columns=["REF_AREA", "INDICATOR", "OBS_VALUE"])
+def main() -> None:
+    """Command line: `python data_loader.py` downloads fresh data and summarises it."""
+    info = summarize(load_dataset(refresh=True))
+    print(f"Saved {DATASET_PATH}: {info['countries']} countries, {info['values']} values, "
+          f"years {info['first']}-{info['last']}")
 
-    for group in ["SEX", "AGE", "URBANISATION", "COMP_BREAKDOWN_1"]:
-        if group in df.columns and df[group].notna().any():
-            totals = df[df[group].isin(["_T", "_Z"])]
-            if not totals.empty:
-                df = totals
-
-    df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
-    df = (
-        df.dropna(subset=["OBS_VALUE"])
-        .sort_values("TIME_PERIOD")
-        .drop_duplicates(subset=["REF_AREA"], keep="last")
-        .assign(INDICATOR=indicator.code)  # Map back to config code for pivot/reindex
-    )
-    return df[["REF_AREA", "INDICATOR", "OBS_VALUE"]]
-
-def update_data():
-    meta = fetch_countries_metadata()
-    if meta.empty:
-        return pd.DataFrame(columns=["country", "region", *INDICATOR_CODES]).rename_axis("iso3")
-    
-    iso3_codes = meta.index.tolist()
-    raw_data = pd.concat(
-        [fetch_indicator(indicator, iso3_codes) for indicator in INDICATORS],
-        ignore_index=True,
-    )
-
-    if raw_data.empty:
-        indicators_df = pd.DataFrame(index=meta.index, columns=INDICATOR_CODES)
-    else:
-        indicators_df = (
-            raw_data.pivot(index="REF_AREA", columns="INDICATOR", values="OBS_VALUE")
-            .reindex(columns=INDICATOR_CODES)
-        )
-    
-    data = meta.join(indicators_df, how="inner")
-    
-    if not data.empty:
-        data.to_csv("data/test_dataset.csv") # TODO: change path to data/dataset.csv
-    return data
-
-def load_from_csv():
-    return pd.read_csv("data/test_dataset.csv") # TODO: change path to data/dataset.csv
-
-def load_data(update: bool = False) -> pd.DataFrame | None:
-    if not update:
-        return load_from_csv()
-    else:
-        return update_data()
 
 if __name__ == "__main__":
-    data = load_data(True)
-    print(data)
+    main()
