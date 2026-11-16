@@ -1,3 +1,4 @@
+'''
 """Download World Bank indicators and cache them in data/dataset.csv."""
 
 from pathlib import Path
@@ -52,3 +53,23 @@ def load_dataset(refresh: bool = False) -> pd.DataFrame:
         fetch_countries().join(fetch_indicators(), how="inner").to_csv(DATASET_PATH)
     path = DATASET_PATH if DATASET_PATH.exists() else MOCK_PATH
     return pd.read_csv(path, index_col="iso3", keep_default_na=False, na_values=[""])
+'''
+
+
+from config import Indicator, INDICATORS
+import pandas as pd
+import requests
+
+def fetch_countries_metadata() -> pd.DataFrame:
+    url = "https://api.worldbank.org/v2/countries"
+    params={
+        "format" : "json",
+        "per_page" : 500
+    }
+    resp = requests.get(url, params=params)
+    print(resp.json()[1])
+
+def fetch_indicator(indicator : Indicator, ):
+    pass
+
+fetch_countries_metadata()
