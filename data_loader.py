@@ -60,7 +60,7 @@ from config import Indicator, INDICATORS
 import pandas as pd
 import requests
 
-BASE_URL = "https://data360.worldbank.org/"
+BASE_URL = "https://data360api.worldbank.org/data360/data"
 
 def fetch_countries_metadata() -> pd.DataFrame:
     url = "https://api.worldbank.org/v2/countries"
@@ -73,8 +73,6 @@ def fetch_countries_metadata() -> pd.DataFrame:
     
     rows = []
     
-    regions = []
-    full_regions = []
     for item in payload:
         if item["region"]["id"] == 'NA': continue
         rows.append({
@@ -82,12 +80,62 @@ def fetch_countries_metadata() -> pd.DataFrame:
             "country" : item["name"],
             "region" : item["region"]["value"]
         })
-    print(full_regions)
     df = pd.DataFrame(rows)
     if df.empty: return None
     df.set_index("iso3")
     return df
         
 
-def fetch_indicator(indicator : Indicator, meta : pd.DataFrame):
-    pass
+def fetch_indicator(indicator : Indicator, meta : pd.DataFrame, year_from = 2015, year_to = 2025):
+    rows = []
+    skip = 0
+    params = {
+        "DATABASE_ID" : ("WB_WDI" if indicator.db == 2 else "WB_WGI"),
+        "INDICATOR" : indicator.code,
+        "REF_AREA" : ",".join(meta["iso3"]),
+        "timePeriodFrom" : str(year_from),
+        "timePeriodTo" : str(year_to)
+    }
+    
+    while True:
+        resp = requests.get(BASE_URL, params={**params, "skip": skip}, timeout=30)
+        resp.raise_for_status()
+        payload = resp.json()
+        batch = payload.get("value", [])
+        rows.extend(batch)
+        if len(rows) >= payload.get("count", 0) or not batch:
+            break
+        skip += 1000
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    
+    for group in ["SEX", "AGE", "URBANISATION", "COMP_BREAKDOWN_1"]:
+        if group in df.columns:
+            df = df[df[group].isin(["_T", "_Z"])]
+            
+    df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    df = (
+        df.dropna(subset=["OBS_VALUE"])
+        .sort_values("TIME_PERIOD")
+        .drop_duplicates(subset=["REF_AREA"], keep="last")
+    )
+    df["category"] = indicator.category
+    return df[["REF_AREA", "INDICATOR", "OBS_VALUE"]]
+
+def load_data(update : bool = False):
+    if not update:
+        return None
+    else:
+        meta = fetch_countries_metadata()
+        data = pd.concat([
+            fetch_indicator(indicator, meta) for indicator in INDICATORS
+        ],
+        ignore_index=True)
+        return data
+    
+    
+if __name__ == "__main__":
+    data = load_data(True)
+    print(data)
