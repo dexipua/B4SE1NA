@@ -1,0 +1,3 @@
+[client]
+# Hide Streamlit's main menu: its items (Rerun, Settings, Print...) are English-only.
+toolbarMode = "minimal"
