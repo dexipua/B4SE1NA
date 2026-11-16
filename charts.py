@@ -94,3 +94,20 @@ def category_scatter(
     )
     fig.update_traces(marker={"size": 9, "line": {"width": 0}})
     return fig
+
+def why_not_bar(loss_cat: pd.DataFrame, names: pd.Series, iso3: str, winner: str) -> go.Figure:
+    """'Why not X?': per-category gap of a chosen country to the winner (bigger is worse)."""
+    if iso3 not in loss_cat.index or winner not in loss_cat.index:
+        return go.Figure()
+    gap = (loss_cat.loc[iso3] - loss_cat.loc[winner]).rename(index=CATEGORIES).sort_values()
+    colors = [SERIES_COLORS[1] if v > 0 else SERIES_COLORS[2] for v in gap]
+    fig = go.Figure(go.Bar(
+        x=gap.values, y=gap.index, orientation="h", marker_color=colors,
+        hovertemplate="%{y}: %{x:+.4f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title=f"{names[iso3]} проти {names[winner]}",
+        xaxis_title="Відставання від переможця (більше = гірше)",
+        yaxis_title="", bargap=0.35,
+    )
+    return fig
