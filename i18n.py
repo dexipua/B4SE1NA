@@ -3,6 +3,7 @@
 import pandas as pd
 import pycountry
 from babel import Locale
+from babel.numbers import format_decimal
 
 LANGUAGES: dict[str, str] = {
     "uk": "Українська",
@@ -103,6 +104,20 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
     "tab.rank": ("Рейтинг", "Ranking", "Rangliste", "Classement", "排名"),
     "tab.compare": ("Порівняння", "Comparison", "Vergleich", "Comparaison", "比较"),
     "tab.map": ("Карта", "Map", "Karte", "Carte", "地图"),
+    "tab.explore": ("Огляд", "Explore", "Erkunden", "Explorer", "探索"),
+    "explore.x": ("Горизонтальна вісь", "Horizontal axis", "Horizontale Achse", "Axe horizontal", "横轴"),
+    "explore.y": ("Вертикальна вісь", "Vertical axis", "Vertikale Achse", "Axe vertical", "纵轴"),
+    "explore.note": (
+        "Кожна точка — країна: положення показує її рівень у двох категоріях (0–100, відносно інших "
+        "країн), колір — бал за вашими налаштуваннями.",
+        "Each dot is a country: its position shows its level in two categories (0–100, relative to other "
+        "countries), its colour the score for your settings.",
+        "Jeder Punkt ist ein Land: Die Position zeigt sein Niveau in zwei Kategorien (0–100, relativ zu "
+        "anderen Ländern), die Farbe die Punktzahl für Ihre Einstellungen.",
+        "Chaque point est un pays : sa position indique son niveau dans deux catégories (0–100, par rapport "
+        "aux autres pays), sa couleur le score selon vos réglages.",
+        "每个点代表一个国家：位置表示其在两个类别中的水平（0–100，相对于其他国家），颜色表示按您设置计算的得分。",
+    ),
     "col.country": ("Країна", "Country", "Land", "Pays", "国家"),
     "col.region": ("Регіон", "Region", "Region", "Région", "地区"),
     "col.score": ("Бал", "Score", "Punktzahl", "Score", "得分"),
@@ -138,7 +153,10 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "**{other}**得{other_score}分，**{winner}**得{winner_score}分。向右的条形表示{other}失分更多的指标，"
         "向左的表示失分更少的指标。",
     ),
-    "why_not.details": ("Дані таблицею", "Show as table", "Als Tabelle anzeigen", "Afficher le tableau", "以表格显示"),
+    "why_not.details": (
+        "Детальніше за показниками", "Details by indicator", "Details nach Indikator", "Détail par indicateur",
+        "按指标查看详情",
+    ),
     "chart.points_lost": (
         "Втрачено балів до ідеалу", "Points lost vs. the ideal", "Verlorene Punkte zum Ideal",
         "Points perdus par rapport à l'idéal", "与理想相比失去的分数",
@@ -149,6 +167,189 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "失分差：{other} − {winner}",
     ),
     "chart.ideal": ("Ідеал", "Ideal", "Ideal", "Idéal", "理想"),
+    "values.title": ("Реальні значення", "Actual values", "Tatsächliche Werte", "Valeurs réelles", "实际数值"),
+    "values.note": (
+        "У дужках — рік останніх доступних даних.", "The year of the latest available data is in brackets.",
+        "In Klammern: Jahr der neuesten verfügbaren Daten.",
+        "Entre parenthèses : année des dernières données disponibles.", "括号内为最新可用数据的年份。",
+    ),
+    "download": (
+        "Завантажити рейтинг (CSV)", "Download ranking (CSV)", "Rangliste herunterladen (CSV)",
+        "Télécharger le classement (CSV)", "下载排名（CSV）",
+    ),
+    "share": ("Поділитися", "Share", "Teilen", "Partager", "分享"),
+    "share.note": (
+        "Посилання відкриє застосунок з такими самими налаштуваннями.",
+        "This link opens the app with the same settings.",
+        "Dieser Link öffnet die App mit denselben Einstellungen.",
+        "Ce lien ouvre l'application avec les mêmes réglages.", "此链接将以相同设置打开应用。",
+    ),
+    # Preference quiz: UI
+    "quiz.open": (
+        "Не знаєте, що обрати? Пройдіть тест", "Not sure? Take the quiz", "Unsicher? Machen Sie den Test",
+        "Indécis ? Faites le quiz", "拿不定主意？做个测试",
+    ),
+    "quiz.title": ("Тест уподобань", "Preference quiz", "Präferenztest", "Quiz de préférences", "偏好测试"),
+    "quiz.intro": (
+        "{n} коротких запитань — за відповідями ми розрахуємо ваги критеріїв. Потім їх можна змінити "
+        "на бічній панелі.",
+        "{n} short questions: your answers set the weight of every criterion. You can still adjust them in "
+        "the sidebar afterwards.",
+        "{n} kurze Fragen: Ihre Antworten bestimmen das Gewicht jedes Kriteriums. Danach können Sie es in "
+        "der Seitenleiste anpassen.",
+        "{n} questions courtes : vos réponses fixent le poids de chaque critère. Vous pourrez ensuite les "
+        "ajuster dans le panneau latéral.",
+        "{n}个简短问题：您的回答将决定每项标准的权重。之后仍可在侧边栏中调整。",
+    ),
+    "quiz.apply": (
+        "Розрахувати мої ваги", "Calculate my weights", "Meine Gewichte berechnen", "Calculer mes poids",
+        "计算我的权重",
+    ),
+    "quiz.done": (
+        "Ваги розраховано за тестом. Найважливіше для вас: {cats}.",
+        "Weights calculated from the quiz. What matters most to you: {cats}.",
+        "Gewichte aus dem Test berechnet. Am wichtigsten ist Ihnen: {cats}.",
+        "Poids calculés d'après le quiz. Ce qui compte le plus pour vous : {cats}.",
+        "已根据测试计算权重。您最看重的是：{cats}。",
+    ),
+    # Preference quiz: questions (keyed by quiz.QUESTIONS ids) and their options
+    "quiz.stage": ("Хто переїжджає?", "Who is moving?", "Wer zieht um?", "Qui déménage ?", "谁要搬迁？"),
+    "quiz.stage.solo": ("Я сам(а)", "Just me", "Nur ich", "Moi seul(e)", "只有我自己"),
+    "quiz.stage.couple": (
+        "Пара без дітей", "A couple without children", "Ein Paar ohne Kinder", "Un couple sans enfants",
+        "没有孩子的伴侣",
+    ),
+    "quiz.stage.family": (
+        "Сім'я з дітьми", "A family with children", "Eine Familie mit Kindern", "Une famille avec enfants",
+        "有孩子的家庭",
+    ),
+    "quiz.stage.retired": ("Пенсіонер(ка)", "A retiree", "Im Ruhestand", "Un(e) retraité(e)", "退休人士"),
+    "quiz.work": (
+        "Як ви плануєте заробляти?", "How will you earn a living?",
+        "Wie werden Sie Ihren Lebensunterhalt verdienen?", "Comment allez-vous gagner votre vie ?",
+        "您打算如何谋生？",
+    ),
+    "quiz.work.job_local": (
+        "Шукатиму роботу на місці", "Find a job locally", "Vor Ort eine Stelle finden",
+        "Trouver un emploi sur place", "在当地找工作",
+    ),
+    "quiz.work.remote": (
+        "Працюватиму віддалено", "Work remotely", "Remote arbeiten", "Travailler à distance", "远程工作",
+    ),
+    "quiz.work.business": (
+        "Відкрию власну справу", "Start my own business", "Ein eigenes Unternehmen gründen",
+        "Créer ma propre entreprise", "自己创业",
+    ),
+    "quiz.work.none": (
+        "Не планую працювати", "I don't plan to work", "Ich plane nicht zu arbeiten",
+        "Je ne compte pas travailler", "不打算工作",
+    ),
+    "quiz.money": (
+        "Що для вас найважливіше у фінансах?", "What matters most to you about money?",
+        "Was ist Ihnen beim Geld am wichtigsten?", "Qu'est-ce qui compte le plus pour vous côté argent ?",
+        "在经济方面，您最看重什么？",
+    ),
+    "quiz.money.salary": ("Високі доходи", "High incomes", "Hohe Einkommen", "Des revenus élevés", "高收入"),
+    "quiz.money.prices": ("Стабільні ціни", "Stable prices", "Stabile Preise", "Des prix stables", "物价稳定"),
+    "quiz.money.affordable": (
+        "Доступне життя, не обов'язково найбагатша країна",
+        "Affordable living, not necessarily the richest country",
+        "Bezahlbares Leben, nicht unbedingt das reichste Land",
+        "Une vie abordable, pas forcément le pays le plus riche", "生活成本可承受，不一定是最富裕的国家",
+    ),
+    "quiz.money.indifferent": (
+        "Гроші — не головне", "Money isn't the main thing", "Geld ist nicht das Wichtigste",
+        "L'argent n'est pas l'essentiel", "钱不是最重要的",
+    ),
+    "quiz.safety": (
+        "Наскільки важлива для вас безпека?", "How important is safety to you?",
+        "Wie wichtig ist Ihnen Sicherheit?", "Quelle importance accordez-vous à la sécurité ?",
+        "安全对您有多重要？",
+    ),
+    "quiz.safety.top": (
+        "Це головне", "It's my top priority", "Das hat oberste Priorität", "C'est ma priorité absolue",
+        "这是我的首要考虑",
+    ),
+    "quiz.safety.important": (
+        "Важлива, але не понад усе", "Important, but not above everything", "Wichtig, aber nicht über allem",
+        "Importante, mais pas avant tout", "重要，但不是压倒一切",
+    ),
+    "quiz.safety.relaxed": (
+        "Не дуже хвилює", "Not much of a concern", "Kein großes Thema", "Pas vraiment une préoccupation",
+        "不太在意",
+    ),
+    "quiz.health": (
+        "Що вам потрібно від охорони здоров'я?", "What do you need from healthcare?",
+        "Was brauchen Sie vom Gesundheitssystem?", "Qu'attendez-vous du système de santé ?",
+        "您对医疗有什么需求？",
+    ),
+    "quiz.health.care": (
+        "Якісне лікування: хронічні хвороби або особливі потреби",
+        "Good medical care: chronic conditions or special needs",
+        "Gute medizinische Versorgung: chronische Erkrankungen oder besondere Bedürfnisse",
+        "Des soins de qualité : maladie chronique ou besoins particuliers", "优质医疗：有慢性病或特殊需要",
+    ),
+    "quiz.health.longevity": (
+        "Довге здорове життя", "A long, healthy life", "Ein langes, gesundes Leben",
+        "Une vie longue et en bonne santé", "健康长寿",
+    ),
+    "quiz.health.fine": (
+        "Я здоровий(а), це не пріоритет", "I'm healthy, it's not a priority",
+        "Ich bin gesund, das hat keine Priorität", "Je suis en bonne santé, ce n'est pas une priorité",
+        "我身体健康，这不是优先事项",
+    ),
+    "quiz.climate": (
+        "Клімат і природа: наскільки важливе чисте повітря?", "Climate and nature: how important is clean air?",
+        "Klima und Natur: Wie wichtig ist saubere Luft?", "Climat et nature : quelle importance pour un air pur ?",
+        "气候与自然：清洁空气对您有多重要？",
+    ),
+    "quiz.climate.clean_air": ("Дуже важливе", "Essential", "Unverzichtbar", "Essentiel", "非常重要"),
+    "quiz.climate.nice": ("Було б добре", "Nice to have", "Wäre schön", "Appréciable", "有更好"),
+    "quiz.climate.indifferent": ("Не звертаю уваги", "I don't mind", "Ist mir egal", "Peu m'importe", "无所谓"),
+    "quiz.values": (
+        "Що вам найближче?", "Which value is closest to you?", "Welcher Wert liegt Ihnen am nächsten?",
+        "Quelle valeur vous correspond le mieux ?", "哪种价值观最贴近您？",
+    ),
+    "quiz.values.honesty": (
+        "Чесні інституції без корупції", "Honest institutions without corruption",
+        "Ehrliche Institutionen ohne Korruption", "Des institutions honnêtes, sans corruption", "廉洁、没有腐败的制度",
+    ),
+    "quiz.values.stability": (
+        "Політична стабільність і передбачуваність", "Political stability and predictability",
+        "Politische Stabilität und Berechenbarkeit", "Stabilité politique et prévisibilité", "政治稳定、可预期",
+    ),
+    "quiz.values.opportunity": (
+        "Можливості для розвитку і кар'єри", "Opportunities to grow and build a career",
+        "Chancen für Entwicklung und Karriere", "Des opportunités pour évoluer et faire carrière",
+        "成长与职业发展的机会",
+    ),
+    "quiz.values.wellbeing": (
+        "Спокійне життя, здоров'я і природа", "A calm life, health and nature",
+        "Ein ruhiges Leben, Gesundheit und Natur", "Une vie calme, la santé et la nature", "平静的生活、健康与自然",
+    ),
+    "quiz.online": (
+        "Наскільки вам потрібен інтернет?", "How much do you rely on the internet?",
+        "Wie sehr sind Sie auf das Internet angewiesen?", "À quel point dépendez-vous d'internet ?",
+        "您对互联网的依赖程度如何？",
+    ),
+    "quiz.online.always": ("Постійно онлайн", "Always online", "Ständig online", "Toujours en ligne", "一直在线"),
+    "quiz.online.sometimes": ("Час від часу", "From time to time", "Ab und zu", "De temps en temps", "偶尔"),
+    "quiz.online.rarely": ("Майже не користуюся", "Hardly ever", "Kaum", "Presque jamais", "几乎不用"),
+    "quiz.ambition": (
+        "Яку країну шукаєте?", "What kind of country are you looking for?", "Was für ein Land suchen Sie?",
+        "Quel type de pays recherchez-vous ?", "您在寻找什么样的国家？",
+    ),
+    "quiz.ambition.best": (
+        "Найкращу з можливих", "The best possible", "Das bestmögliche", "Le meilleur possible", "尽可能最好的",
+    ),
+    "quiz.ambition.balanced": (
+        "Добру, без крайнощів", "A good one, nothing extreme", "Ein gutes, ohne Extreme",
+        "Un bon pays, sans excès", "不错就行，不求极致",
+    ),
+    "quiz.ambition.modest": (
+        "Скромнішу, але доступнішу", "A more modest but more accessible one",
+        "Ein bescheideneres, aber zugänglicheres", "Plus modeste mais plus accessible", "条件一般但更容易实现的",
+    ),
     # Categories
     "cat.safety": ("Безпека", "Safety", "Sicherheit", "Sécurité", "安全"),
     "cat.economy": ("Економіка", "Economy", "Wirtschaft", "Économie", "经济"),
@@ -198,6 +399,19 @@ TEXTS: dict[str, tuple[str, str, str, str, str]] = {
         "Сім'я з дітьми", "Family with children", "Familie mit Kindern", "Famille avec enfants",
         "有孩子的家庭",
     ),
+    "preset.retiree": ("Пенсіонер", "Retiree", "Rentner", "Retraité", "退休人员"),
+    "preset.startup": ("Стартапер", "Startup founder", "Start-up-Gründer", "Fondateur de start-up", "创业者"),
+    "preset.it_specialist": ("IT-спеціаліст", "IT specialist", "IT-Fachkraft", "Spécialiste IT", "IT专业人员"),
+    "preset.eco": ("Еко-свідомий", "Eco-conscious", "Umweltbewusst", "Écoresponsable", "环保主义者"),
+    "preset.job_seeker": ("Шукач роботи", "Job seeker", "Arbeitssuchende", "Demandeur d'emploi", "求职者"),
+    "preset.safety_first": (
+        "Безпека понад усе", "Safety first", "Sicherheit zuerst", "La sécurité avant tout", "安全第一",
+    ),
+    "preset.medical": ("Лікування", "Medical care", "Medizinische Versorgung", "Soins médicaux", "医疗"),
+    "preset.integrity": (
+        "Борець за чесність", "Integrity first", "Integrität zuerst", "L'intégrité avant tout", "廉洁优先",
+    ),
+    "preset.balanced": ("Збалансований", "Balanced", "Ausgewogen", "Équilibré", "均衡"),
     # World Bank regions (keyed by their English name in the dataset)
     "region.East Asia & Pacific": (
         "Східна Азія і Тихоокеанський регіон", "East Asia & Pacific", "Ostasien und Pazifik",
@@ -244,6 +458,12 @@ def label(prefix: str, name: str, lang: str) -> str:
     """Translated name of a category/indicator/preset/region; unknown regions stay as-is."""
     key = f"{prefix}.{name}"
     return t(key, lang) if key in TEXTS else name
+
+
+def format_number(value: float, lang: str) -> str:
+    """Locale-formatted number; fewer decimals for larger magnitudes (54 210, 74.7, -0.33)."""
+    pattern = "#,##0" if abs(value) >= 100 else "#,##0.#" if abs(value) >= 10 else "#,##0.##"
+    return format_decimal(value, format=pattern, locale=lang)
 
 
 def _alpha2(iso3: str) -> str | None:

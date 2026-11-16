@@ -37,7 +37,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"digital": 0.8},
     },
-    "Пенсіонер": {
+    "retiree": {
         "weights": {
             "safety": 8,
             "economy": 3,
@@ -48,7 +48,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"health": 0.9, "environment": 0.8},
     },
-    "Стартапер": {
+    "startup": {
         "weights": {
             "safety": 4,
             "economy": 9,
@@ -59,7 +59,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"economy": 0.8, "governance": 0.7},
     },
-    "IT-спеціаліст": {
+    "it_specialist": {
         "weights": {
             "safety": 5,
             "economy": 8,
@@ -70,7 +70,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"digital": 0.9, "economy": 0.7},
     },
-    "Еко-свідомий": {
+    "eco": {
         "weights": {
             "safety": 5,
             "economy": 2,
@@ -81,7 +81,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"environment": 0.9},
     },
-    "Шукач роботи": {
+    "job_seeker": {
         "weights": {
             "safety": 6,
             "economy": 10,
@@ -92,7 +92,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"economy": 0.8},
     },
-    "Безпека понад усе": {
+    "safety_first": {
         "weights": {
             "safety": 10,
             "economy": 3,
@@ -103,7 +103,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"safety": 0.9},
     },
-    "Лікування": {
+    "medical": {
         "weights": {
             "safety": 5,
             "economy": 3,
@@ -114,7 +114,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"health": 0.9},
     },
-    "Борець за чесність": {
+    "integrity": {
         "weights": {
             "safety": 6,
             "economy": 3,
@@ -125,7 +125,7 @@ PRESETS: dict[str, dict[str, dict[str, float]]] = {
         },
         "ideal": {"governance": 0.9},
     },
-    "Збалансований": {
+    "balanced": {
         "weights": {
             "safety": 5,
             "economy": 5,

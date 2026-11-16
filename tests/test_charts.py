@@ -5,10 +5,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from charts import CJK_NO_LINE_START, gap_bar, loss_bar, radar, world_map, wrap
+from charts import (CJK_NO_LINE_START, category_scatter, gap_bar, loss_bar, radar, score_bar, why_not_bar,
+                    world_map, wrap)
 from i18n import LANGUAGES, country_names
 from processing import normalize
-from scoring import loss_by_category, match, points_lost
+from scoring import category_levels, loss_by_category, match, points_lost
 
 MOCK_CSV = Path(__file__).parent.parent / "data" / "mock_dataset.csv"
 
@@ -46,6 +47,9 @@ def test_all_figures_build(ranked: tuple, lang: str, dark: bool) -> None:
         loss_bar(loss_by_category(lost), names, lang, dark=dark),
         radar(X.loc[top], pd.Series(1.0, index=X.columns), names, lang, dark=dark),
         world_map(score, names, lang, dark=dark),
+        score_bar(score, names, lang, dark=dark),
+        category_scatter(category_levels(X), score, names, lang, "health", "digital", dark=dark),
+        why_not_bar(loss_by_category(lost), names, top[1], top[0], lang, dark=dark),
         gap_bar(lost.loc[top[1]] - lost.loc[top[0]], names[top[1]], names[top[0]], lang, dark=dark),
     ]
     assert all(fig.data for fig in figures)

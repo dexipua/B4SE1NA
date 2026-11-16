@@ -8,7 +8,7 @@ import pytest
 
 from config import CATEGORIES, CATEGORY_OF, INDICATOR_CODES, LOWER_IS_BETTER
 from processing import min_max, normalize
-from scoring import expand_weights, loss_by_category, match, points_lost, similar_to
+from scoring import category_levels, expand_weights, loss_by_category, match, points_lost, similar_to
 
 MOCK_CSV = Path(__file__).parent.parent / "data" / "mock_dataset.csv"
 
@@ -116,3 +116,12 @@ def test_points_lost_sum_to_score_gap(X: pd.DataFrame, uniform: pd.Series) -> No
     lost = points_lost(loss)
     assert lost.sum(axis=1).to_numpy() == pytest.approx((100 - score).to_numpy())
     assert (lost.loc["DEU"] == 0).all()
+
+
+def test_category_levels_average_each_category(X: pd.DataFrame) -> None:
+    """A category's level is the mean of its normalized indicators, on a 0-100 scale."""
+    levels = category_levels(X)
+    assert list(levels.columns) == list(CATEGORIES)
+    economy = [code for code in INDICATOR_CODES if CATEGORY_OF[code] == "economy"]
+    assert levels.loc["DEU", "economy"] == pytest.approx(X.loc["DEU", economy].mean() * 100)
+    assert ((levels >= 0) & (levels <= 100) | levels.isna()).all().all()

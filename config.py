@@ -17,6 +17,7 @@ class Indicator(NamedTuple):
 
 
 CATEGORIES: tuple[str, ...] = ("safety", "economy", "health", "environment", "governance", "digital")
+MODES: tuple[str, ...] = ("best", "ideal", "similar")
 
 INDICATORS: list[Indicator] = [
     Indicator("WB_WDI_VC_IHR_PSRC_P5", 2, "safety", True),
@@ -35,3 +36,4 @@ INDICATOR_CODES: list[str] = [ind.code for ind in INDICATORS]
 CATEGORY_OF: dict[str, str] = {ind.code: ind.category for ind in INDICATORS}
 LOWER_IS_BETTER: list[str] = [ind.code for ind in INDICATORS if ind.lower_is_better]
 LOG_SCALED: list[str] = [ind.code for ind in INDICATORS if ind.log_scale]
+YEAR_COLUMNS: dict[str, str] = {code: f"{code}_year" for code in INDICATOR_CODES}  # year of each value

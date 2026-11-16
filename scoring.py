@@ -49,3 +49,8 @@ def points_lost(loss: pd.DataFrame) -> pd.DataFrame:
     """
     total = np.sqrt(loss.sum(axis=1))
     return loss.mul(100 / total.where(total > 0), axis=0).fillna(0.0)
+
+
+def category_levels(X: pd.DataFrame) -> pd.DataFrame:
+    """Mean normalized level (0-100) of each category's indicators per country; NaN if none is known."""
+    return X.T.groupby(CATEGORY_OF).mean().T.reindex(columns=list(CATEGORIES)) * 100

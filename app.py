@@ -1,31 +1,29 @@
 """Streamlit UI for Country Matcher; all logic lives in the other modules."""
 
+from urllib.parse import urlencode, urlsplit
+
 import pandas as pd
 import requests
 import streamlit as st
 
-from charts import gap_bar, loss_bar, radar, world_map
-from config import CATEGORIES, INDICATORS, INDICATOR_CODES
+from charts import category_scatter, gap_bar, loss_bar, radar, score_bar, why_not_bar, world_map
+from config import CATEGORIES, INDICATOR_CODES
 from data_loader import DATASET_PATH, load_dataset
-from explain import top_reasons, why_not
-from i18n import DEFAULT_LANG, LANGUAGES, country_names, label, t
+from explain import ranking_table, top_reasons, values_table, why_not
+from i18n import LANGUAGES, country_names, label, t
 from presets import PRESETS
 from processing import normalize
-from scoring import expand_weights, loss_by_category, match, points_lost, similar_to
+from quiz import QUESTIONS, quiz_settings, top_categories
+from scoring import category_levels, loss_by_category, match, points_lost, similar_to
+from settings import DEFAULTS, MODE_BEST, MODE_IDEAL, MODE_SIMILAR, decode, encode, preset_settings, query
 
-MODE_BEST, MODE_IDEAL, MODE_SIMILAR = "best", "ideal", "similar"
 MAX_COMPARE = 3
+CSV_NAME = "country-ranking.csv"
 CARD_WIDTH = "stretch"  # cards share the row and wrap on narrow screens
 COUNTRY_WIDGETS = ("ref_country", "compare", "why_not", "regions")
 TABLE_HEIGHT = 386  # px: ten rows plus the header, no half-visible row
 PLOTLY_CONFIG = {"displayModeBar": False}  # plotly's modebar tooltips are English-only
-DEFAULTS: dict[str, object] = {
-    "lang": DEFAULT_LANG,
-    "mode": MODE_BEST,
-    **{cat: 5 for cat in CATEGORIES},
-    **{f"ideal_{cat}": 1.0 for cat in CATEGORIES},
-    **{f"mult_{code}": 1.0 for code in INDICATOR_CODES},
-}
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 @st.cache_data
@@ -56,6 +54,21 @@ def dark() -> bool:
     return st.context.theme.type == "dark"
 
 
+def local_visit() -> bool:
+    """Whether the page is opened on this machine rather than through a public tunnel (ngrok).
+
+    ngrok routes by the Host header, so a remote visitor cannot pose as localhost.
+    No Host header means a headless test run, which counts as local.
+    """
+    host = st.context.headers.get("Host")
+    return host is None or urlsplit(f"//{host}").hostname in LOCAL_HOSTS
+
+
+def show(fig: object) -> None:
+    """Render a plotly figure full-width without plotly's English-only toolbar."""
+    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+
+
 def tr(key: str, **fmt: object) -> str:
     """Translate `key` into the current language."""
     return t(key, lang(), **fmt)
@@ -71,21 +84,37 @@ def relabel_countries() -> None:
             st.session_state[key] = st.session_state[key]
 
 
-def init_state() -> None:
-    """Seed defaults and keep values of widgets that are hidden in some modes."""
+def init_state(raw: pd.DataFrame) -> None:
+    """Apply a shared link once per session, then seed defaults and keep hidden widgets' values."""
+    state = st.session_state
+    if "link_applied" not in state:
+        state.update(decode(st.query_params.to_dict(), raw.index, set(raw["region"].dropna())))
+        state.link_applied = True
     for key, value in DEFAULTS.items():
-        st.session_state[key] = st.session_state.get(key, value)
+        state[key] = state.get(key, value)
 
 
 def apply_preset(preset_id: str) -> None:
     """on_click: load a preset's weights and ideal into the sidebar widgets."""
-    preset = PRESETS[preset_id]
-    for cat in CATEGORIES:
-        st.session_state[cat] = preset["weights"].get(cat, 0)
-        st.session_state[f"ideal_{cat}"] = preset.get("ideal", {}).get(cat, 1.0)
-    for code in INDICATOR_CODES:
-        st.session_state[f"mult_{code}"] = 1.0
-    st.session_state.mode = MODE_IDEAL if preset.get("ideal") else MODE_BEST
+    st.session_state.update(preset_settings(preset_id))
+
+
+def apply_quiz() -> None:
+    """on_click: turn the quiz answers into weights, multipliers and ideal, like a personal preset."""
+    settings = quiz_settings({q: st.session_state[f"quiz_{q}"] for q in QUESTIONS})
+    st.session_state.update(settings)
+    st.session_state.quiz_top = top_categories(settings)
+
+
+def quiz_body() -> None:
+    """Quiz questions as radios with no default; applying needs every question answered."""
+    lng = lang()
+    st.caption(tr("quiz.intro", n=len(QUESTIONS)))
+    for question, options in QUESTIONS.items():
+        st.radio(t(f"quiz.{question}", lng), list(options), index=None, key=f"quiz_{question}",
+                 format_func=lambda option, q=question: t(f"quiz.{q}.{option}", lng))
+    answered = all(st.session_state.get(f"quiz_{q}") for q in QUESTIONS)
+    st.button(tr("quiz.apply"), on_click=apply_quiz, disabled=not answered, type="primary", width="stretch")
 
 
 def refresh_data() -> None:
@@ -116,6 +145,8 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
     with sb.container(horizontal=True, wrap=True, gap="small"):
         for preset_id in PRESETS:
             st.button(label("preset", preset_id, lng), on_click=apply_preset, args=(preset_id,), width="content")
+    if sb.button(tr("quiz.open"), icon=":material/quiz:", width="stretch"):
+        st.dialog(tr("quiz.title"), width="large")(quiz_body)()
 
     sb.subheader(tr("weights"))
     if mode == MODE_SIMILAR:
@@ -143,9 +174,20 @@ def sidebar(X: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
     sb.multiselect(tr("regions"), sorted(regions.dropna().unique()), key="regions",
                    format_func=lambda region: label("region", region, lng), placeholder=tr("all_regions"))
     sb.toggle(tr("complete_only"), key="complete_only")
-    sb.button(tr("refresh"), on_click=refresh_data, width="stretch")
+    if local_visit():  # public visitors must not trigger World Bank downloads on the host
+        sb.button(tr("refresh"), on_click=refresh_data, width="stretch")
     if st.session_state.get("refresh_failed"):
         sb.error(tr("refresh_error"))
+
+
+def sync_link() -> None:
+    """Mirror the settings into the address bar and offer a copyable link in the sidebar."""
+    params = encode(st.session_state)
+    st.query_params.from_dict(params)
+    if st.context.url:
+        st.sidebar.subheader(tr("share"))
+        st.sidebar.code(f"{st.context.url}?{urlencode(params)}", language=None, wrap_lines=True)
+        st.sidebar.caption(tr("share.note"))
 
 
 def run_query(X: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
@@ -154,12 +196,7 @@ def run_query(X: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame, pd.Series]:
     if state.mode == MODE_SIMILAR:
         score, loss = similar_to(X, state.ref_country)
         return score, loss, X.loc[state.ref_country]
-    mults = pd.Series({code: state[f"mult_{code}"] for code in INDICATOR_CODES})
-    weights = expand_weights({cat: state[cat] for cat in CATEGORIES}) * mults
-    if state.mode == MODE_IDEAL:
-        ideal = pd.Series({ind.code: state[f"ideal_{ind.category}"] for ind in INDICATORS})
-    else:
-        ideal = pd.Series(1.0, index=X.columns)
+    ideal, weights = query(state)
     return *match(X, ideal, weights), ideal
 
 
@@ -182,24 +219,23 @@ def top_cards(score: pd.Series, lost: pd.DataFrame, names: pd.Series) -> None:
                       help=tr("weakest", reasons=", ".join(reasons)) if reasons else None)
 
 
-def ranking_tab(score: pd.Series, lost: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
-    """Full ranking table (score before region, so it stays visible on phones) plus the loss chart."""
-    country, region, points = tr("col.country"), tr("col.region"), tr("col.score")
-    table = pd.DataFrame({
-        country: names[score.index].values,
-        points: score.values,
-        region: [label("region", r, lang()) for r in regions[score.index]],
-    }, index=pd.RangeIndex(1, len(score) + 1, name="#"))
-    st.dataframe(table, width="stretch", height=TABLE_HEIGHT, column_config={
+def ranking_tab(score: pd.Series, lost_cat: pd.DataFrame, names: pd.Series, regions: pd.Series) -> None:
+    """Top-10 score bars, full ranking table (score before region, visible on phones), CSV, loss chart."""
+    show(score_bar(score, names, lang(), dark=dark()))
+    table = ranking_table(score, names, regions, lang())
+    points = tr("col.score")
+    st.dataframe(table.drop(columns="ISO3"), width="stretch", height=TABLE_HEIGHT, column_config={
         points: st.column_config.ProgressColumn(points, min_value=0, max_value=100, format="%.1f",
                                                 width="medium"),
     })
-    fig = loss_bar(loss_by_category(lost), names, lang(), dark=dark())
-    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+    st.download_button(tr("download"), table.to_csv().encode("utf-8-sig"), file_name=CSV_NAME,
+                       mime="text/csv", icon=":material/download:", on_click="ignore")
+    show(loss_bar(lost_cat, names, lang(), dark=dark()))
 
 
-def compare_tab(X: pd.DataFrame, score: pd.Series, ideal: pd.Series, names: pd.Series) -> None:
-    """Radar of up to three chosen countries against the ideal.
+def compare_tab(raw: pd.DataFrame, X: pd.DataFrame, score: pd.Series, ideal: pd.Series,
+                names: pd.Series) -> None:
+    """Radar of up to three chosen countries against the ideal, then their actual values.
 
     The limit is enforced here rather than with max_selections, whose message is English-only.
     """
@@ -207,39 +243,57 @@ def compare_tab(X: pd.DataFrame, score: pd.Series, ideal: pd.Series, names: pd.S
                             format_func=names.get, key="compare", placeholder=tr("choose"))
     if len(chosen) > MAX_COMPARE:
         st.warning(tr("compare_limit"))
-    if chosen:
-        fig = radar(X.loc[chosen[:MAX_COMPARE]], ideal, names, lang(), dark=dark())
-        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+    if not chosen:
+        return
+    shown = chosen[:MAX_COMPARE]
+    show(radar(X.loc[shown], ideal, names, lang(), dark=dark()))
+    st.subheader(tr("values.title"), divider="gray")
+    st.dataframe(values_table(raw, shown, names, lang()), width="stretch")
+    st.caption(tr("values.note"))
 
 
-def why_not_block(score: pd.Series, lost: pd.DataFrame, names: pd.Series) -> None:
-    """Explain what separates a chosen country from the winner, indicator by indicator."""
+def explore_tab(X: pd.DataFrame, score: pd.Series, names: pd.Series) -> None:
+    """Scatter of countries by two chosen categories (safety vs economy by default), colored by score."""
+    lng = lang()
+    x_col, y_col = st.columns(2)
+    x_cat = x_col.selectbox(tr("explore.x"), CATEGORIES, index=CATEGORIES.index("safety"), key="explore_x",
+                            format_func=lambda cat: label("cat", cat, lng))
+    y_cat = y_col.selectbox(tr("explore.y"), CATEGORIES, index=CATEGORIES.index("economy"), key="explore_y",
+                            format_func=lambda cat: label("cat", cat, lng))
+    show(category_scatter(category_levels(X), score, names, lng, x_cat, y_cat, dark=dark()))
+    st.caption(tr("explore.note"))
+
+
+def why_not_block(score: pd.Series, lost: pd.DataFrame, lost_cat: pd.DataFrame, names: pd.Series) -> None:
+    """Explain what separates a chosen country from the winner: by category, then by indicator."""
     winner = score.index[0]
     st.subheader(tr("why_not.title", winner=names[winner]), divider="gray")
     other = st.selectbox(tr("why_not.pick"), list(score.index[1:]), format_func=names.get,
                          key="why_not", placeholder=tr("choose"))
     st.markdown(tr("why_not.summary", other=names[other], other_score=f"{score[other]:.1f}",
                    winner=names[winner], winner_score=f"{score[winner]:.1f}"))
-    table = why_not(lost, other, winner, lang=lang())
-    gap = table[tr("col.gap")]
-    st.plotly_chart(gap_bar(gap, names[other], names[winner], lang(), dark=dark()),
-                    width="stretch", config=PLOTLY_CONFIG)
+    show(why_not_bar(lost_cat, names, other, winner, lang(), dark=dark()))
     with st.expander(tr("why_not.details")):
+        table = why_not(lost, other, winner, lang=lang())
+        show(gap_bar(table[tr("col.gap")], names[other], names[winner], lang(), dark=dark()))
         fmt = st.column_config.NumberColumn(format="%.1f")
         st.dataframe(table, width="stretch", column_config=dict.fromkeys(table.columns, fmt))
 
 
 def main() -> None:
     """Page entry point."""
-    init_state()
-    st.set_page_config(page_title=tr("page_title"), page_icon="🌍", layout="wide")
     raw = load_raw()
+    init_state(raw)
+    st.set_page_config(page_title=tr("page_title"), page_icon="🌍", layout="wide")
     names, regions = load_names(lang()), raw["region"]
     X = load_matrix(0 if st.session_state.get("complete_only") else 2)
     sidebar(X, names, regions)
+    sync_link()
 
     st.title(f"🌍 {tr('page_title')}")
     st.caption(tr("subtitle"))
+    if quiz_top := st.session_state.pop("quiz_top", None):
+        st.success(tr("quiz.done", cats=", ".join(label("cat", cat, lang()) for cat in quiz_top)))
     if not DATASET_PATH.exists():
         st.caption(tr("demo_data"))
 
@@ -249,17 +303,21 @@ def main() -> None:
         st.info(tr("no_results"))
         st.stop()
     lost = points_lost(loss)
+    lost_cat = loss_by_category(lost)
 
     top_cards(score, lost, names)
-    tab_rank, tab_compare, tab_map = st.tabs([tr("tab.rank"), tr("tab.compare"), tr("tab.map")])
+    tab_rank, tab_compare, tab_explore, tab_map = st.tabs(
+        [tr("tab.rank"), tr("tab.compare"), tr("tab.explore"), tr("tab.map")])
     with tab_rank:
-        ranking_tab(score, lost, names, regions)
+        ranking_tab(score, lost_cat, names, regions)
     with tab_compare:
-        compare_tab(X, score, ideal, names)
+        compare_tab(raw, X, score, ideal, names)
+    with tab_explore:
+        explore_tab(X, score, names)
     with tab_map:
-        st.plotly_chart(world_map(score, names, lang(), dark=dark()), width="stretch", config=PLOTLY_CONFIG)
+        show(world_map(score, names, lang(), dark=dark()))
     if len(score) > 1:
-        why_not_block(score, lost, names)
+        why_not_block(score, lost, lost_cat, names)
 
 
 main()

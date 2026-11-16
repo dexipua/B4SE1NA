@@ -1,3 +1,7 @@
+[browser]
+# Don't send usage statistics to Streamlit (the app is also served publicly via ngrok).
+gatherUsageStats = false
+
 [client]
 # Hide Streamlit's main menu: its items (Rerun, Settings, Print...) are English-only.
 toolbarMode = "minimal"
